@@ -624,6 +624,22 @@ class Engine:
         return [{"path": path, "line": i, "text": line} for path, content in self.files(book_id, revision).items()
                 for i, line in enumerate(content.splitlines(), 1) if query.casefold() in line.casefold()]
 
+    def diff(self, book_id, from_revision, to_revision=None):
+        """Compare verified snapshots without changing their publication state."""
+        to_revision = to_revision or self.book(book_id)["current_revision"]
+        before = self.files(book_id, from_revision)
+        after = self.files(book_id, to_revision)
+        changes = []
+        for path in sorted(before.keys() | after.keys()):
+            if before.get(path) == after.get(path):
+                continue
+            changes.append({"path": path,
+                            "status": "added" if path not in before else "removed" if path not in after else "modified",
+                            "before_hash": digest(before[path]) if path in before else None,
+                            "after_hash": digest(after[path]) if path in after else None})
+        return {"book_id": book_id, "from_revision": from_revision, "to_revision": to_revision,
+                "changes": changes, "scope": "file content changes only; not semantic impact or review approval"}
+
     def impact(self, book_id, path, revision=None):
         """Report explicit evidence within one revision, not inferred causality."""
         from .records import _json, _research, validate_state

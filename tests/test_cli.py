@@ -143,6 +143,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(evidence["reviews"][0]["revision"], published["result_revision"])
         self.assertEqual(evidence["reviews"][0]["review"], review)
         self.assertEqual(evidence["research"], [])
+        differences = self.json_command("diff", "cli-book", self.book["current_revision"],
+                                        "--to-revision", published["result_revision"])
+        manuscript = next(entry for entry in differences["changes"] if entry["path"] == "manuscript/001.md")
+        self.assertEqual(manuscript["status"], "added")
+        self.error_command("diff", "cli-book", "missing")
         self.assertEqual(self.json_command("accept", "cli-book")["status"], "accepted")
         self.assertEqual(self.json_command("audit")["snapshots_verified"], 2)
         self.assertEqual(len(self.json_command("tasks", "--book", "cli-book")), 2)

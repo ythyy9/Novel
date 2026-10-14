@@ -56,3 +56,16 @@
 下一独立工程项：同作品两个不可变快照的文件差异清单（增删改及哈希），供跨章返修逐文件核对；不自动推断因果、不修改阶段门禁、不需要未同步作品。
 
 本阶段全量：`python -m unittest discover -s tests -v` 退出 0，136 项、134 通过、2 Windows 专属跳过，11.183 秒；日志 `.local-validation/cloud-20261014/evidence-final.log`。本阶段为真实 SQLite/文件/CLI 工程验证，没有真实模型或读者验收。
+
+研究/审核阶段功能提交：`a45651db0f57ff01619203f9f0f7d2e8e61c1f72`。`git push origin HEAD:refs/heads/codex/v1-local-workflow` 退出 0；随后 `git ls-remote --heads origin codex/v1-local-workflow` 退出 0，回读一致。
+
+## 接续阶段：版本文件差异清单
+
+新增 `diff BOOK FROM_REVISION [--to-revision TO_REVISION]`，省略目标时固定当前版本。输出按路径排序的新增、删除、修改及两端内容哈希，不输出未变文件；反向比较也能定位历史已不存在的文件。只读取经校验的同作品快照，不改当前指针或审核。测试覆盖增删改、同版空差异、显式历史与默认当前版本、错误/跨作品版本、只读及真实 CLI。差异静态复核通过，`git diff --check` 退出 0。
+
+- 首次 `python -m unittest discover -s tests -v` 退出 1：138 项中 2 个断言失败，2 Windows 跳过。夹具初始状态 JSON 与写入 JSON 的格式也有变化，测试错误地假定只有正文变化、并假定第一项是正文。日志 `.local-validation/cloud-20261014/diff-final.log` 保留。
+- 修复仅调整夹具断言为按路径核对，并明确验证 JSON 空白也属于内容变化，没有放宽程序或门禁。
+- 再次同命令退出 0：138 项，136 通过、2 Windows 专属跳过，12.957 秒。日志 `.local-validation/cloud-20261014/diff-final-2.log`。
+- 累计：工程全量失败运行 3 次（共 4 个用例失败/错误），夹具返修 3 次；补丁上下文失败 1 次；GitHub API 失败 2 次；没有新增模型调用。此前本机历史状态仍未知。
+
+本阶段达到验收标准。下项候选为版本绑定的有限范围原文读取，用路径、行号及源哈希支持按需恢复；默认完整任务包仍保持现状，不能在未验证依赖闭包前自动删减模型任务输入。实际文学验收、全量语义依赖及 OS 隔离继续明确未完成；不因它们需要作者输入而阻断独立工程工作。

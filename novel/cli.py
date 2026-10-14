@@ -34,6 +34,10 @@ def parser():
     impact.add_argument("book")
     impact.add_argument("path")
     impact.add_argument("--revision")
+    diff = sub.add_parser("diff", help="比较同作品两个快照的文件内容哈希，不修改版本")
+    diff.add_argument("book")
+    diff.add_argument("from_revision")
+    diff.add_argument("--to-revision", help="默认当前版本")
     create = sub.add_parser("task-create")
     create.add_argument("book")
     create.add_argument("kind", choices=sorted(KINDS))
@@ -125,6 +129,8 @@ def execute(args):
         return engine.search(args.book, args.query, args.revision)
     if cmd == "impact":
         return engine.impact(args.book, args.path, args.revision)
+    if cmd == "diff":
+        return engine.diff(args.book, args.from_revision, args.to_revision)
     if cmd == "task-create":
         instruction = args.instruction if args.instruction is not None else args.instruction_file.read_text(encoding="utf-8-sig")
         return engine.enqueue(args.book, args.kind, instruction)

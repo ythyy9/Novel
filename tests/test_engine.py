@@ -138,6 +138,37 @@ class EngineTests(unittest.TestCase):
             self.engine.search("test-book", "证据", other["current_revision"])
         self.assertEqual(self.engine.audit(), before)
 
+    def test_diff_reports_add_modify_remove_and_fixed_versions_without_writes(self):
+        initial = self.engine.book("test-book")["current_revision"]
+        first = self.write(content="工程样本旧内容\n")["result_revision"]
+        second = self.write(kind="revise", content="工程样本新内容\n")["result_revision"]
+        before = self.engine.audit()
+        added = self.engine.diff("test-book", initial, first)
+        by_path = {entry["path"]: entry for entry in added["changes"]}
+        self.assertEqual(by_path["manuscript/001.md"]["status"], "added")
+        self.assertIsNone(by_path["manuscript/001.md"]["before_hash"])
+        # JSON whitespace changes are file-content changes, not semantic changes.
+        self.assertEqual(by_path["canon/state.json"]["status"], "modified")
+        changed = self.engine.diff("test-book", first)
+        self.assertEqual(changed["to_revision"], second)
+        self.assertEqual(changed["changes"][0]["path"], "manuscript/001.md")
+        self.assertEqual(changed["changes"][0]["status"], "modified")
+        self.assertEqual(changed["changes"][0]["before_hash"], by_path["manuscript/001.md"]["after_hash"])
+        self.assertNotEqual(changed["changes"][0]["before_hash"], changed["changes"][0]["after_hash"])
+        removed = self.engine.diff("test-book", first, initial)
+        removed_entry = next(entry for entry in removed["changes"] if entry["path"] == "manuscript/001.md")
+        self.assertEqual(removed_entry["status"], "removed")
+        self.assertIsNone(removed_entry["after_hash"])
+        self.assertEqual(self.engine.diff("test-book", first, first)["changes"], [])
+        self.assertEqual(self.engine.audit(), before)
+
+    def test_diff_rejects_foreign_and_missing_revisions(self):
+        current = self.engine.book("test-book")["current_revision"]
+        foreign = self.engine.create_book("other", "工程样本")["current_revision"]
+        for start, end in ((foreign, current), (current, foreign), ("missing", current), (current, "missing")):
+            with self.subTest(start=start, end=end), self.assertRaises(ValueError):
+                self.engine.diff("test-book", start, end)
+
     def test_impact_rejects_missing_unsafe_and_foreign_revision(self):
         for path in ("manuscript/missing.md", "../state.json", "/tmp/x.md"):
             with self.subTest(path=path), self.assertRaises(ValueError):
