@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "billing": "chatgpt_subscription",
+  "max_attempts": 3,
+  "max_no_progress": 2,
+  "max_result_bytes": 2000000
+}

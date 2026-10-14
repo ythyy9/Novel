@@ -1,0 +1,168 @@
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "input_revision": {
+      "type": "string"
+    },
+    "completed_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_step": {
+      "type": "string"
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "review": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "coverage": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "dimensions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "continuity",
+                  "character",
+                  "world",
+                  "reading"
+                ]
+              }
+            },
+            "findings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "error",
+                      "concern",
+                      "experience"
+                    ]
+                  },
+                  "confirmed": {
+                    "type": "boolean"
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "major",
+                      "minor"
+                    ]
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "quote": {
+                    "type": "string"
+                  },
+                  "explanation": {
+                    "type": "string"
+                  },
+                  "suggestion": {
+                    "type": "string"
+                  },
+                  "affected_paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "open"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "category",
+                  "confirmed",
+                  "severity",
+                  "path",
+                  "quote",
+                  "explanation",
+                  "suggestion",
+                  "affected_paths",
+                  "status"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "coverage",
+            "dimensions",
+            "findings"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "affected_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state_notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_id",
+    "input_revision",
+    "completed_steps",
+    "next_step",
+    "unresolved",
+    "changes",
+    "review",
+    "affected_paths",
+    "state_notes"
+  ],
+  "additionalProperties": false
+}
