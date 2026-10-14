@@ -36,3 +36,9 @@
 下一工程任务：研究记录 `affected_paths` 与审核覆盖的版本绑定查询（独立定义输出及回归，不能把它冒充自动因果分析）。按需上下文和完整依赖图尚未实现。连续章节验收仍依赖作者明确的作品输入，不能自行选定作品或启用候选方法。
 
 最终测试：退出 0，134 项，132 通过、2 Windows 专属跳过，11.074 秒。达到两项工程验收标准。提交 SHA 与远程推送结果在后续交接段记录。
+
+### 提交与远程交接
+
+功能提交 `29fbdc397d6a3fb8e01d380d402ce6b7c3742050`。
+`git push origin HEAD:refs/heads/codex/v1-local-workflow` 退出 0；随后 `git ls-remote --heads origin codex/v1-local-workflow` 退出 0，回读为同一 SHA，工作区干净。
+已有 PR 定位：https://github.com/ythyy9/Novel/pull/1 。分支已推送，但由于 GitHub API Forbidden，PR 当前状态及 Draft 属性未验证，未尝试修改或合并。此权限阻塞仅影响 PR 管理；本轮两个可验收工程阶段已经完成。无需重跑模型或重置既有数据即可从下一工程任务接续。最终交接记录由单独文档提交保存。
