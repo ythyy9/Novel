@@ -113,3 +113,9 @@
 剩余缺口和优先级见 `docs/remaining-acceptance.md`：区分必要可靠性/接入验证、已完成查询便利功能、缺作者输入/未同步资料的作品验收。停止无限扩展小查询；下一必要项为同一任务真实接入恢复，验收须有模型结构结果、控制器提交发布和回读，再谈审核检出/误报及研究 web 事件。
 
 最终 `python -m unittest discover -s tests -v` 退出 0：143 项，141 通过、2 Windows 专属跳过，14.586 秒；日志 `.local-validation/cloud-20261014/reliability-final.log`。`git diff --check` 退出 0。差异审查确认未改原则、限额、原始反馈、自动重试或审核门禁；分页仅查询，恢复回归只操作隔离夹具。
+
+功能与验收提交 `b2198a675b9e8d4be5ffe23383e924fafc22b48f`；Git 推送退出 0，远程回读一致，工作区干净。
+
+本任务已实际使用现有 GitHub MCP 连接器：读取 PR #1 最新正文，保留父会话及既有内容，仅追加本阶段分页/恢复测试、143 项结果和真实 Codex 阻塞。`github_update_pull_request` 成功，随后独立 `github_get_pr_info` 回读正文完全一致，draft=true、state=open、merged=false、base=main、head=codex/v1-local-workflow，SHA=b2198a6，updated_at=2026-10-14T15:55:34Z。未改 base、Draft、reviewers 或发送评论。PR 管理已由既有连接器完成；gh 代理通道未恢复。
+
+用户随后批准仅为 Novel 放行 api.github.com HTTPS443。工具发现未提供按域名修改本执行环境网络策略的接口，不能把通用网络/无沙箱权限当成窄域名授权。未申请全网、未改代理、未新加秘密、未作无信息重试。父聊天可通过环境管理入口处理；该网络问题与真实 Codex app-server 的只读文件系统阻塞分开保存。
