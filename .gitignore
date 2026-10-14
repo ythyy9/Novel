@@ -1,0 +1,16 @@
+# Local credentials and environment configuration
+.env
+.env.*
+!.env.example
+
+# Editor and OS temporary files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Python caches and local environments, if implementation uses Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
