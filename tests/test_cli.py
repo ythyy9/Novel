@@ -98,6 +98,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.json_command("search", "cli-book", "knowledge",
                                           "--revision", self.book["current_revision"])[0]["path"], "canon/state.json")
         self.error_command("search", "cli-book", "knowledge", "--revision", "missing")
+        page = self.json_command("search", "cli-book", "knowledge", "--page-size", "1")
+        self.assertEqual(page["revision"], self.book["current_revision"])
+        self.assertEqual(len(page["matches"]), 1)
+        self.error_command("search", "cli-book", "knowledge", "--page-size", "1", "--offset", "1")
+        self.error_command("search", "cli-book", "knowledge", "--offset", "1")
         self.error_command("impact", "cli-book", "manuscript/missing.md")
         self.assertEqual(self.json_command("audit"), before)
 

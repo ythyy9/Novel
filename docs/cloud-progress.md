@@ -91,3 +91,25 @@
 下一工程候选：为任务恢复提供稳定分页的检索结果，明确版本与翻页边界，避免当前全量逐行输出随长篇规模增长；自动缩减模型输入和依赖闭包仍未实现，不将本阶段称为完整长篇上下文系统。远程 PR 管理等待环境代理检查，独立工程没有作者决策阻塞。
 
 分段读取功能提交 `0e1a687cfdb15b8c57fba4b187008b03e05834c7`，推送退出 0；`git ls-remote --heads origin codex/v1-local-workflow` 退出 0，回读一致，工作区干净。本次接续三个功能阶段均已实际提交和远程验证。此段交接元数据另作文档提交，不需要重复已通过且源码未变的测试。
+
+## 接续：稳定分页、真实接入与恢复验收
+
+起点 `8a228f9adddecef73207c250f0dc2a9a8dfe9cfa`，工作区干净，沿用原分支。父会话确认同 SHA 的 PR #1 仍 Draft/未合并；本任务随后通过可用的 `github_get_pr_info` 连接器实际读取成功，PR 记录已含父会话补充的前轮结果。保留其内容，不重复代理探针，不把连接器成功写成 gh CLI 恢复。
+
+分页：`search --page-size 1..1000 [--offset N]` 返回固定版本、查询、偏移、命中和下一偏移；后续页必须指定版本，避免当前指针变化造成翻页漂移；默认全量输出兼容。按路径和行号稳定排序，仅积累一页加一条命中，不建立索引、不限制单行字节数、仍读取完整快照。全量命令 `python -m unittest discover -s tests -v` 退出 0，142 项、140 通过、2 Windows 专属跳过，11.538 秒；日志 `paging-final.log`（同前日志根）。新增历史版本翻页、边界/非法参数、空结果、跨作品及 CLI 验证。
+
+真实接入：`python -m novel doctor` 退出 0，ready=true，Codex CLI 0.159.2、ChatGPT 登录、所需 flags 可用；无模型偏好配置，未指定其他模型、未切换计费。`cloud-doctor.json` 是实际预检，但不代表执行成功。
+
+在 `.local-validation/cloud-20261014/live-review/` 建立独立工程资料（没有正式作品），固定短夹具经控制器提交发布，再创建真实只读审核任务 **e8817187f6ef4170a03d65c39dd70e6e**。实际 `python -m novel --root <该目录> task-run e8817187f6ef4170a03d65c39dd70e6e --timeout 90` 退出 **1**，底层 Codex 退出 1；stderr 为 `Error: failed to initialize in-process app-server client: Read-only file system (os error 30)`，stdout 空，没有模型结果。
+
+任务已真实保存 `blocked / tool_failure / attempts=1`；没有自动 resume、重跑或创建替代模型任务。摘要 `live-run-summary.json`；实际日志在 `live-review/runtime/tasks/e8817187f6ef4170a03d65c39dd70e6e/attempt-1/`。查看 CLI 帮助和本地可用说明，未找到已核实的独立运行写入目录方案；不修改 CODEX_HOME、不复制认证、不扩大文件系统权限。CLI 帮助明确 auth 仍依赖 CODEX_HOME，不能假定搬目录无影响。故真实接入以及依赖它的模型/联网研究验证停止，等待受支持运行配置或平台修复；其他工程继续。
+
+按路线图优先补充完整停机备份恢复回归：复制 books/runtime/policies/methods/evaluations 到独立目录，真实新 CLI 进程运行 audit/handoff/eval-summary，核对停止原因、尝试/无进展计数、实验与源副本不变；删除恢复副本 books 后必须审计失败。没有使用本机私有资料，也没有把 agent 实验意见冒充人类反馈。
+
+首次 `python -m unittest discover -s tests -p test_recovery.py -v` 退出 1（4 项，1 error）：检查恢复停止时误用 write，先触发既有“未通过不得写下一章”门禁。改用 revise 定向检验停止门禁，保留日志 `restore-drill.log`；没有改门禁。其后全量结果见下。
+
+累计更新：工程失败运行 4 次（共 5 个失败/错误用例）、夹具返修 4 次；本轮另有一次文档补丁上下文失败，确认未修改后修正，补丁失败累计 2 次。真实 Codex 调用 1 次失败、重试 0、任务 attempts=1。此前网络诊断失败和本机未知累计状态全部保留。
+
+剩余缺口和优先级见 `docs/remaining-acceptance.md`：区分必要可靠性/接入验证、已完成查询便利功能、缺作者输入/未同步资料的作品验收。停止无限扩展小查询；下一必要项为同一任务真实接入恢复，验收须有模型结构结果、控制器提交发布和回读，再谈审核检出/误报及研究 web 事件。
+
+最终 `python -m unittest discover -s tests -v` 退出 0：143 项，141 通过、2 Windows 专属跳过，14.586 秒；日志 `.local-validation/cloud-20261014/reliability-final.log`。`git diff --check` 退出 0。差异审查确认未改原则、限额、原始反馈、自动重试或审核门禁；分页仅查询，恢复回归只操作隔离夹具。

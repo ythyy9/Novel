@@ -30,6 +30,8 @@ def parser():
     search.add_argument("book")
     search.add_argument("query")
     search.add_argument("--revision")
+    search.add_argument("--page-size", type=int, help="分页输出，每页 1-1000 条；不指定则保留完整列表输出")
+    search.add_argument("--offset", type=int, default=0, help="分页结果偏移，后续页必须指定 --revision")
     impact = sub.add_parser("impact", help="查询显式状态引用、研究影响及同版本审核覆盖，不推断语义影响")
     impact.add_argument("book")
     impact.add_argument("path")
@@ -132,6 +134,10 @@ def execute(args):
             raise ValueError("File is absent from this version")
         return files[args.path]
     if cmd == "search":
+        if args.page_size is not None:
+            return engine.search_page(args.book, args.query, args.revision, args.page_size, args.offset)
+        if args.offset:
+            raise ValueError("--offset requires --page-size")
         return engine.search(args.book, args.query, args.revision)
     if cmd == "impact":
         return engine.impact(args.book, args.path, args.revision)

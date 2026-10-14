@@ -198,6 +198,30 @@ class EngineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "another book"):
             self.engine.excerpt("test-book", "canon/state.json", foreign)
 
+    def test_search_pages_pin_revision_across_later_writes(self):
+        original = self.write(content="MATCH 一\nmatch 二\nmatch 三\nmatch 四\n")["result_revision"]
+        first = self.engine.search_page("test-book", "Match", page_size=2)
+        self.assertEqual(first["revision"], original)
+        self.assertEqual(first["next_offset"], 2)
+        self.write(kind="revise", content="match 新版\n")
+        before = self.engine.audit()
+        second = self.engine.search_page("test-book", "Match", original, 2, first["next_offset"])
+        self.assertIsNone(second["next_offset"])
+        self.assertEqual(first["matches"] + second["matches"], self.engine.search("test-book", "Match", original))
+        self.assertEqual(self.engine.search_page("test-book", "Match", original, 2, 100)["matches"], [])
+        self.assertEqual(self.engine.search_page("test-book", "不存在", original)["matches"], [])
+        self.assertEqual(self.engine.audit(), before)
+
+    def test_search_page_rejects_unpinned_continuation_and_invalid_parameters(self):
+        for size, offset in ((0, 0), (1001, 0), (True, 0), (1, -1), (1, False), (1, 1)):
+            with self.subTest(size=size, offset=offset), self.assertRaises(ValueError):
+                self.engine.search_page("test-book", "x", page_size=size, offset=offset)
+        with self.assertRaises(ValueError):
+            self.engine.search_page("test-book", " ")
+        foreign = self.engine.create_book("other", "工程样本")["current_revision"]
+        with self.assertRaisesRegex(ValueError, "another book"):
+            self.engine.search_page("test-book", "x", foreign)
+
     def test_impact_rejects_missing_unsafe_and_foreign_revision(self):
         for path in ("manuscript/missing.md", "../state.json", "/tmp/x.md"):
             with self.subTest(path=path), self.assertRaises(ValueError):

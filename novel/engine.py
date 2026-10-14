@@ -624,6 +624,30 @@ class Engine:
         return [{"path": path, "line": i, "text": line} for path, content in self.files(book_id, revision).items()
                 for i, line in enumerate(content.splitlines(), 1) if query.casefold() in line.casefold()]
 
+    def search_page(self, book_id, query, revision=None, page_size=50, offset=0):
+        if not isinstance(query, str) or not query.strip():
+            raise EngineError("Search query cannot be empty")
+        if type(page_size) is not int or not 1 <= page_size <= 1000 or type(offset) is not int or offset < 0:
+            raise EngineError("page_size must be 1-1000 and offset a nonnegative integer")
+        if offset and not revision:
+            raise EngineError("Continuing a search requires the first page's explicit revision")
+        revision = revision or self.book(book_id)["current_revision"]
+        files = self.files(book_id, revision)
+        matches, seen = [], 0
+        folded = query.casefold()
+        for path in sorted(files):
+            for number, line in enumerate(files[path].splitlines(), 1):
+                if folded not in line.casefold():
+                    continue
+                if seen >= offset:
+                    matches.append({"path": path, "line": number, "text": line})
+                    if len(matches) > page_size:
+                        return {"revision": revision, "query": query, "offset": offset,
+                                "matches": matches[:page_size], "next_offset": offset + page_size}
+                seen += 1
+        return {"revision": revision, "query": query, "offset": offset,
+                "matches": matches, "next_offset": None}
+
     def diff(self, book_id, from_revision, to_revision=None):
         """Compare verified snapshots without changing their publication state."""
         to_revision = to_revision or self.book(book_id)["current_revision"]

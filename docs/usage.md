@@ -169,6 +169,8 @@ python -m novel rollback $bookId '替换为该书历史版本哈希' --note '具
 python -m novel impact BOOK manuscript/001.md
 python -m novel impact BOOK manuscript/001.md --revision REVISION
 python -m novel search BOOK '证据原文' --revision REVISION
+python -m novel search BOOK '证据原文' --page-size 50
+python -m novel search BOOK '证据原文' --revision FIRST_PAGE_REVISION --page-size 50 --offset 50
 python -m novel diff BOOK OLD_REVISION --to-revision NEW_REVISION
 python -m novel excerpt BOOK manuscript/001.md --revision REVISION --start-line 20 --line-count 40
 ```
@@ -182,6 +184,8 @@ python -m novel excerpt BOOK manuscript/001.md --revision REVISION --start-line 
 `diff` 比较同一本书的两个不可变快照；省略 `--to-revision` 时固定为查询开始时的当前版本。返回按路径排序的新增、删除和修改清单，以及前后 SHA-256；不存在的一侧为 `null`，内容相同的文件不列出。反向比较历史快照也可能产生“删除”，这不表示命令删除了文件。两端快照都经过完整性与作品归属校验。命令只比较内容，不判断正文质量、语义影响或是否通过审核，可配合两个版本的 `impact` 分别回查依据。
 
 `excerpt` 按 1 起始的行号返回有限原文，默认从第 1 行读取最多 100 行。结果携带固定版本、完整源文件哈希、总行数、实际终止行、带行号的文本及 `has_more`。行数不足时返回到文件末尾，不补齐、不改写；范围必须为正整数，起始行超出文件时报错。输出行文本不含换行符，若需要完整原始文本仍使用 `read`。这些只读入口支持操作员按需检索；目前模型任务包仍携带完整版本，不自动截断研究依据或状态依赖。
+
+`search --page-size` 返回固定 `revision`、原始查询、`offset`、`matches` 和 `next_offset`；结果按路径及行号排序。每页 1–1000 条，末页 `next_offset` 为 `null`。继续翻页必须沿用首个结果中的版本和同一查询，并显式提供 `--revision`，避免当前版本变化引起漏项或重复。不指定分页参数时保留原列表输出。分页限制输出条数，不限制单行长度；目前仍需读取整个快照，尚不是大型检索索引。
 
 ## 存储、备份与权限边界
 

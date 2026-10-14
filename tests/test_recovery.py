@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -75,6 +76,49 @@ engine.publish(sys.argv[2])
         self.engine.claim(task["id"])
         packet = load_result(prepare(self.engine, task["id"]) / "packet.json")
         self.assertEqual(packet["policies_and_methods"], documents)
+
+    def test_quiescent_backup_restores_stop_history_and_experiments_in_new_process(self):
+        from novel import evaluation
+        task = self.engine.claim(self.engine.enqueue("test", "write", "backup fixture")["id"])
+        self.engine.submit(task["id"], self.result(task))
+        self.engine.publish(task["id"])
+        stopped = self.engine.claim(self.engine.enqueue("test", "revise", "stop fixture")["id"])
+        self.engine.block(stopped["id"], "no_progress", "工程停止证据，不能在恢复副本中清零")
+        experiment = {"id": "restore-check", "hypothesis": "工程备份检验", "baseline_method": "fixture baseline",
+                      "candidate_method": "fixture candidate", "cases": [
+                          {"id": kind, "split": kind, "input": "工程输入", "baseline_output": "旧", "candidate_output": "新"}
+                          for kind in ("development", "holdout")]}
+        evaluation.create(self.root, experiment)
+        evaluation.judge(self.root, "restore-check", "development", "inconclusive", "工程测试记录，不是作者反馈", "agent")
+        before = self.engine.handoff(stopped["id"])
+        summary = evaluation.summarize(self.root, "restore-check")
+        # No writer is running; copy the complete documented set, including any WAL sidecars.
+        restored_temp = tempfile.TemporaryDirectory(prefix=".novel-recovery-test-", dir=self.root.parent)
+        self.addCleanup(restored_temp.cleanup)
+        restored = Path(restored_temp.name) / "restored"
+        restored.mkdir()
+        for folder in ("books", "runtime", "policies", "methods", "evaluations"):
+            shutil.copytree(self.root / folder, restored / folder)
+        def cli(*args):
+            process = subprocess.run([sys.executable, "-m", "novel", "--root", str(restored), *args],
+                                     cwd=Path(__file__).resolve().parents[1], capture_output=True,
+                                     text=True, encoding="utf-8", timeout=30)
+            self.assertEqual(process.returncode, 0, process.stderr)
+            return json.loads(process.stdout)
+        self.assertEqual(cli("audit"), self.engine.audit())
+        self.assertEqual(cli("handoff", stopped["id"]), before)
+        self.assertEqual(cli("eval-summary", "restore-check"), summary)
+        reopened = Engine(restored)
+        queued = reopened.enqueue("test", "revise", "cannot bypass restored stop")
+        with self.assertRaises(ValueError):
+            reopened.claim(queued["id"])
+        self.assertEqual(reopened.task(stopped["id"])["attempts"], 1)
+        self.assertEqual(reopened.task(stopped["id"])["no_progress"], 1)
+        self.assertEqual(self.engine.handoff(stopped["id"]), before)
+        # A Git-only or runtime-only backup must not pass the recovery audit.
+        shutil.rmtree(restored / "books")
+        with self.assertRaises((ValueError, OSError)):
+            reopened.audit()
 
 
 if __name__ == "__main__":
