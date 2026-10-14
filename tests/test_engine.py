@@ -91,6 +91,62 @@ class EngineTests(unittest.TestCase):
         with closing(sqlite3.connect(sqlite_files[0])) as connection:
             self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
+    def test_impact_tracks_exact_sources_and_preserves_knowledge_kinds(self):
+        task = self.start()
+        changes = self.manuscript_changes()
+        state = copy.deepcopy(EMPTY_STATE)
+        source = {"path": "manuscript/001.md", "quote": "船在落日前抵港"}
+        for kind in ("world_fact", "character_knowledge", "character_belief",
+                     "reader_knowledge", "undecided", "candidate"):
+            state["knowledge"].append({"id": kind, "kind": kind,
+                "holder": "甲" if kind.startswith("character_") else None,
+                "statement": "工程记录 " + kind, "sources": [source]})
+        for section in ("characters", "world", "offstage"):
+            state[section].append({"id": "same-id", "statement": "工程记录", "sources": [source]})
+        changes[1]["content"] = json.dumps(state, ensure_ascii=False)
+        self.engine.submit(task["id"], self.result(task, changes))
+        published = self.engine.publish(task["id"])
+        before = self.engine.audit()
+        report = Engine(self.root).impact("test-book", source["path"])
+        self.assertEqual(report["revision"], published["result_revision"])
+        self.assertEqual(len(report["references"]), 9)
+        self.assertEqual({r["kind"] for r in report["references"] if r["section"] == "knowledge"},
+                         {e["kind"] for e in state["knowledge"]})
+        self.assertTrue(all(r["sources"] == [source] for r in report["references"]))
+        self.assertEqual(self.engine.audit(), before)
+        self.assertEqual(self.engine.tasks()[0]["status"], "completed")
+        task = self.start("revise")
+        for entries in state.values():
+            for entry in entries:
+                entry["sources"] = [{"path": "manuscript/002.md", "quote": source["quote"]}]
+        changes = [{"path": "manuscript/002.md", "content": source["quote"]},
+                   {"path": "canon/state.json", "content": json.dumps(state, ensure_ascii=False)}]
+        self.engine.submit(task["id"], self.result(task, changes))
+        self.engine.publish(task["id"])
+        self.assertEqual(self.engine.impact("test-book", source["path"])["references"], [])
+        self.assertEqual(self.engine.impact("test-book", source["path"], report["revision"]), report)
+
+    def test_search_can_revisit_old_prose_without_changing_current_version(self):
+        published = self.write(content="原版证据 Old Evidence\n")
+        self.write(kind="revise", content="新版证据\n")
+        other = self.engine.create_book("other", "另一本工程样本")
+        before = self.engine.audit()
+        self.assertEqual(self.engine.search("test-book", "old evidence"), [])
+        self.assertEqual(self.engine.search("test-book", "old evidence", published["result_revision"]),
+                         [{"path": "manuscript/001.md", "line": 1, "text": "原版证据 Old Evidence"}])
+        with self.assertRaisesRegex(ValueError, "another book"):
+            self.engine.search("test-book", "证据", other["current_revision"])
+        self.assertEqual(self.engine.audit(), before)
+
+    def test_impact_rejects_missing_unsafe_and_foreign_revision(self):
+        for path in ("manuscript/missing.md", "../state.json", "/tmp/x.md"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                self.engine.impact("test-book", path)
+        other = self.engine.create_book("other", "另一本工程样本")
+        with self.assertRaisesRegex(ValueError, "another book"):
+            self.engine.impact("test-book", "canon/state.json", other["current_revision"])
+        self.assertEqual(self.engine.impact("test-book", "canon/state.json")["references"], [])
+
     def test_duplicate_book_is_rejected_without_overwriting(self):
         before = self.engine.book("test-book")
         with self.assertRaises(ValueError):

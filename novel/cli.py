@@ -29,6 +29,11 @@ def parser():
     search = sub.add_parser("search")
     search.add_argument("book")
     search.add_argument("query")
+    search.add_argument("--revision")
+    impact = sub.add_parser("impact", help="列出文件被状态记录显式引用的证据，不推断语义影响")
+    impact.add_argument("book")
+    impact.add_argument("path")
+    impact.add_argument("--revision")
     create = sub.add_parser("task-create")
     create.add_argument("book")
     create.add_argument("kind", choices=sorted(KINDS))
@@ -117,7 +122,9 @@ def execute(args):
             raise ValueError("File is absent from this version")
         return files[args.path]
     if cmd == "search":
-        return engine.search(args.book, args.query)
+        return engine.search(args.book, args.query, args.revision)
+    if cmd == "impact":
+        return engine.impact(args.book, args.path, args.revision)
     if cmd == "task-create":
         instruction = args.instruction if args.instruction is not None else args.instruction_file.read_text(encoding="utf-8-sig")
         return engine.enqueue(args.book, args.kind, instruction)

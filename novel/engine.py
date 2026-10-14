@@ -618,11 +618,35 @@ class Engine:
                 "unresolved": result["unresolved"] if result else [],
                 "next_step": result["next_step"] if result else "Continue the persisted task; resolve any stop before claiming again"}
 
-    def search(self, book_id, query):
+    def search(self, book_id, query, revision=None):
         if not query.strip():
             raise EngineError("Search query cannot be empty")
-        return [{"path": path, "line": i, "text": line} for path, content in self.files(book_id).items()
+        return [{"path": path, "line": i, "text": line} for path, content in self.files(book_id, revision).items()
                 for i, line in enumerate(content.splitlines(), 1) if query.casefold() in line.casefold()]
+
+    def impact(self, book_id, path, revision=None):
+        """Locate explicit state citations, not inferred causal dependencies."""
+        from .records import _json, validate_state
+
+        validate_path(path)
+        revision = revision or self.book(book_id)["current_revision"]
+        files = self.files(book_id, revision)
+        if path not in files:
+            raise EngineError("File is absent from this version")
+        state = _json(files["canon/state.json"], "canon/state.json")
+        validate_state(state, files)
+        references = []
+        for section in ("knowledge", "characters", "world", "offstage"):
+            for entry in state[section]:
+                sources = [source for source in entry["sources"] if source["path"] == path]
+                if sources:
+                    references.append({"section": section, "id": entry["id"],
+                                       "statement": entry["statement"],
+                                       "kind": entry.get("kind"), "holder": entry.get("holder"),
+                                       "sources": sources})
+        return {"book_id": book_id, "revision": revision, "path": path,
+                "source_hash": digest(files[path]), "references": references,
+                "scope": "explicit state citations only; semantic and cross-chapter review still required"}
 
     def feedback(self, book_id, text, source="author"):
         if source not in ("author", "target_reader") or not text.strip():

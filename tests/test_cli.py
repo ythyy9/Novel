@@ -88,6 +88,19 @@ class CliTests(unittest.TestCase):
             "state_notes": "验收文本没有新增人物所知，保留空状态。",
         }
 
+    def test_impact_cli_reads_revision_and_rejects_absent_file(self):
+        before = self.json_command("audit")
+        report = self.json_command("impact", "cli-book", "canon/state.json",
+                                   "--revision", self.book["current_revision"])
+        self.assertEqual(report["revision"], self.book["current_revision"])
+        self.assertEqual(report["references"], [])
+        self.assertEqual(len(report["source_hash"]), 64)
+        self.assertEqual(self.json_command("search", "cli-book", "knowledge",
+                                          "--revision", self.book["current_revision"])[0]["path"], "canon/state.json")
+        self.error_command("search", "cli-book", "knowledge", "--revision", "missing")
+        self.error_command("impact", "cli-book", "manuscript/missing.md")
+        self.assertEqual(self.json_command("audit"), before)
+
     def test_complete_write_review_accept_flow_and_readback(self):
         instruction = "  按这份测试任务书写入完整验收章。\n保留作者输入的换行。\n"
         instruction_file = self.text_file("测试 指令.txt", instruction, bom=True)
