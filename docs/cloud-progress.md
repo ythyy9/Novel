@@ -42,3 +42,17 @@
 功能提交 `29fbdc397d6a3fb8e01d380d402ce6b7c3742050`。
 `git push origin HEAD:refs/heads/codex/v1-local-workflow` 退出 0；随后 `git ls-remote --heads origin codex/v1-local-workflow` 退出 0，回读为同一 SHA，工作区干净。
 已有 PR 定位：https://github.com/ythyy9/Novel/pull/1 。分支已推送，但由于 GitHub API Forbidden，PR 当前状态及 Draft 属性未验证，未尝试修改或合并。此权限阻塞仅影响 PR 管理；本轮两个可验收工程阶段已经完成。无需重跑模型或重置既有数据即可从下一工程任务接续。最终交接记录由单独文档提交保存。
+
+## 接续阶段：研究影响与审核覆盖查询
+
+起点 `19e58a616e68e609969d5d3f096c26207c327335`，同分支、工作区干净；沿用上述累计记录，无重复环境验收。
+
+父会话于 **2026-10-14T15:41Z** 通过其已授权 GitHub 连接只读核验：PR #1 open、draft=true、merged=false，head 为 `codex/v1-local-workflow`，SHA 为 `19e58a616e68e609969d5d3f096c26207c327335`，并回读本进度文档。这是父会话证据，不代表云端 gh API 权限恢复；前述两次 Forbidden 原样保留。
+
+实现：扩展 `impact` 返回所选快照研究记录的完整声明影响及条件、不确定性、来源；查询同一版本且覆盖目标文件的已发布审核，返回控制版本匹配状态、完整报告、未决项和结果哈希。复用研究格式校验和审核完整性校验；不将声明影响解释为采用，不将覆盖解释为通过。
+
+验收：`python -m unittest discover -s tests -p test_engine.py -v` 退出 0，64 项全部通过，日志 `.local-validation/cloud-20261014/evidence-engine.log`。增加历史版本隔离、旧控制标记、未决项保留、审核证据损坏拒绝、只读及 CLI 覆盖。全量结果见下。差异检查 `git diff --check` 退出 0。提交前远程回读仍为 `19e58a6`，没有发现并发提交。本阶段无新增失败或返修；工程累计失败保持 2 次，先前补丁上下文失败保持 1 次；模型调用 0，未知本机累计状态不清零。
+
+下一独立工程项：同作品两个不可变快照的文件差异清单（增删改及哈希），供跨章返修逐文件核对；不自动推断因果、不修改阶段门禁、不需要未同步作品。
+
+本阶段全量：`python -m unittest discover -s tests -v` 退出 0，136 项、134 通过、2 Windows 专属跳过，11.183 秒；日志 `.local-validation/cloud-20261014/evidence-final.log`。本阶段为真实 SQLite/文件/CLI 工程验证，没有真实模型或读者验收。

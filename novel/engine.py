@@ -625,8 +625,8 @@ class Engine:
                 for i, line in enumerate(content.splitlines(), 1) if query.casefold() in line.casefold()]
 
     def impact(self, book_id, path, revision=None):
-        """Locate explicit state citations, not inferred causal dependencies."""
-        from .records import _json, validate_state
+        """Report explicit evidence within one revision, not inferred causality."""
+        from .records import _json, _research, validate_state
 
         validate_path(path)
         revision = revision or self.book(book_id)["current_revision"]
@@ -644,9 +644,33 @@ class Engine:
                                        "statement": entry["statement"],
                                        "kind": entry.get("kind"), "holder": entry.get("holder"),
                                        "sources": sources})
+        research = []
+        for research_path, content in sorted(files.items()):
+            if research_path.startswith("research/") and research_path.endswith(".json"):
+                record = _json(content, research_path)
+                _research(record, files)
+                if path in record["affected_paths"]:
+                    research.append({"path": research_path, "content_hash": digest(content),
+                                     "record": record})
+        reviews = []
+        with self._db() as db:
+            controls = self._controls()
+            rows = db.execute("SELECT * FROM reviews WHERE book_id=? AND revision=? ORDER BY task_id",
+                              (book_id, revision)).fetchall()
+            for row in rows:
+                task = self._row(db, "tasks", row["task_id"])
+                self._verify_review(row, task)
+                result = json.loads(task["result"])
+                report = result["review"]
+                if path in report["coverage"]:
+                    reviews.append({"task_id": task["id"], "revision": row["revision"],
+                                    "controls_match": task["control_hash"] == controls,
+                                    "result_hash": task["result_hash"], "review": report,
+                                    "unresolved": result["unresolved"]})
         return {"book_id": book_id, "revision": revision, "path": path,
                 "source_hash": digest(files[path]), "references": references,
-                "scope": "explicit state citations only; semantic and cross-chapter review still required"}
+                "research": research, "reviews": reviews,
+                "scope": "explicit state citations, declared research impact and same-revision review coverage; not acceptance or semantic proof"}
 
     def feedback(self, book_id, text, source="author"):
         if source not in ("author", "target_reader") or not text.strip():

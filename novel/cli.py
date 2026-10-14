@@ -30,7 +30,7 @@ def parser():
     search.add_argument("book")
     search.add_argument("query")
     search.add_argument("--revision")
-    impact = sub.add_parser("impact", help="列出文件被状态记录显式引用的证据，不推断语义影响")
+    impact = sub.add_parser("impact", help="查询显式状态引用、研究影响及同版本审核覆盖，不推断语义影响")
     impact.add_argument("book")
     impact.add_argument("path")
     impact.add_argument("--revision")

@@ -526,8 +526,43 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(json.loads(self.engine.files("test-book")["research/travel.json"])["conclusion"], "Unknown")
         with self.assertRaises(ValueError):
             self.engine.accept("test-book")
+        report = self.engine.impact("test-book", "manuscript/001.md")
+        self.assertEqual(report["revision"], published["result_revision"])
+        self.assertEqual(report["research"][0]["record"], research)
+        self.assertEqual(report["reviews"], [])
+        old_report = self.engine.impact("test-book", "manuscript/001.md", previous)
+        self.assertEqual(old_report["research"], [])
+        self.assertEqual(len(old_report["reviews"]), 1)
+        self.assertEqual(old_report["reviews"][0]["revision"], previous)
         self.review()
         self.engine.accept("test-book")
+        before = self.engine.audit()
+        report = self.engine.impact("test-book", "manuscript/001.md")
+        self.assertEqual(len(report["reviews"]), 1)
+        self.assertTrue(report["reviews"][0]["controls_match"])
+        self.assertEqual(report["reviews"][0]["review"]["coverage"], ["manuscript/001.md"])
+        self.assertEqual(self.engine.audit(), before)
+
+    def test_impact_exposes_review_unresolved_and_obsolete_controls(self):
+        self.write()
+        review = self.review(unresolved=["等待核对工程疑点"])
+        report = self.engine.impact("test-book", "manuscript/001.md")
+        self.assertEqual(report["reviews"][0]["unresolved"], ["等待核对工程疑点"])
+        self.assertEqual(report["reviews"][0]["task_id"], review["id"])
+        # Isolated test root only: exercise old-control evidence without changing repository methods.
+        (self.root / "methods/review.md").write_text("测试控制版本变化", encoding="utf-8")
+        report = self.engine.impact("test-book", "manuscript/001.md")
+        self.assertFalse(report["reviews"][0]["controls_match"])
+        self.assertEqual(self.engine.impact("test-book", "canon/state.json")["reviews"], [])
+
+    def test_impact_refuses_corrupt_review_evidence(self):
+        self.write()
+        self.review()
+        with closing(sqlite3.connect(self.engine.db_path)) as db:
+            db.execute("UPDATE reviews SET result='{}'")
+            db.commit()
+        with self.assertRaisesRegex(ValueError, "integrity mismatch"):
+            self.engine.impact("test-book", "manuscript/001.md")
 
     def test_candidate_cannot_be_adopted_without_decision_source(self):
         task = self.start()
