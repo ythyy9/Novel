@@ -22,6 +22,7 @@
 | [第一版实施路线](docs/roadmap.md) | 建设次序、已实现能力和仍待作品反馈验证的部分 |
 | [原始项目文本](docs/source/project-proposal.txt) | 用户提供的附件，按原始字节完整保存 |
 | [Agent 协作入口](AGENTS.md) | 项目地图、工作边界与完成依据 |
+| [参考作品登记](docs/references/the-invisible-library.md) | 已选定的 The Invisible Library、版本来源与完整性检查；全书分析待开展 |
 
 ## 运行
 

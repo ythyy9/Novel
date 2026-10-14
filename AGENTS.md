@@ -13,6 +13,7 @@
 - `novel/adapter.py`：现有 ChatGPT 登录的 Codex 接入；`novel/evaluation.py`：方法对照记录。
 - `policies/`、`methods/`：项目原则、限额与方法；任务包携带其内容并绑定控制版本。
 - `tests/`、`docs/validation.md`：工程检查与真实执行证据。
+- `docs/references/`：作者选定的参考作品和核验结论；完整资料在本地 `runtime/references/`，不进入新作 Canon。
 
 第一版源码以 `novel/` 包组织，控制器位于该包中。资料根目录的 `books/` 保存不可变版本，`runtime/` 保存 SQLite 队列及模型日志；二者默认不提交 Git。`evaluations/experiments/` 保存实际对照记录，同样默认留在本地。尚未验证的经验不写成普遍规则。
 
