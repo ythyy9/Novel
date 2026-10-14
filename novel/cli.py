@@ -38,6 +38,12 @@ def parser():
     diff.add_argument("book")
     diff.add_argument("from_revision")
     diff.add_argument("--to-revision", help="默认当前版本")
+    excerpt = sub.add_parser("excerpt", help="按版本和行号读取有限原文，返回来源哈希")
+    excerpt.add_argument("book")
+    excerpt.add_argument("path")
+    excerpt.add_argument("--revision")
+    excerpt.add_argument("--start-line", type=int, default=1)
+    excerpt.add_argument("--line-count", type=int, default=100)
     create = sub.add_parser("task-create")
     create.add_argument("book")
     create.add_argument("kind", choices=sorted(KINDS))
@@ -131,6 +137,8 @@ def execute(args):
         return engine.impact(args.book, args.path, args.revision)
     if cmd == "diff":
         return engine.diff(args.book, args.from_revision, args.to_revision)
+    if cmd == "excerpt":
+        return engine.excerpt(args.book, args.path, args.revision, args.start_line, args.line_count)
     if cmd == "task-create":
         instruction = args.instruction if args.instruction is not None else args.instruction_file.read_text(encoding="utf-8-sig")
         return engine.enqueue(args.book, args.kind, instruction)

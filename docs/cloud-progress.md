@@ -69,3 +69,23 @@
 - 累计：工程全量失败运行 3 次（共 4 个用例失败/错误），夹具返修 3 次；补丁上下文失败 1 次；GitHub API 失败 2 次；没有新增模型调用。此前本机历史状态仍未知。
 
 本阶段达到验收标准。下项候选为版本绑定的有限范围原文读取，用路径、行号及源哈希支持按需恢复；默认完整任务包仍保持现状，不能在未验证依赖闭包前自动删减模型任务输入。实际文学验收、全量语义依赖及 OS 隔离继续明确未完成；不因它们需要作者输入而阻断独立工程工作。
+
+差异阶段提交：`94d449f70584827e9c7ff0639114e257e7609f19`；推送退出 0，远程回读一致。
+
+## 授权后的 GitHub API 脱敏诊断
+
+用户追加授权在既有权限内诊断修复，不扩大网络或权限。检查 executor/cloud 技能目录及工作区，均未找到 `cloud-environment-runtime`，未假设存在其他凭据交付方式。`gh --version` 为 2.46.0；安全 auth 输出显示环境 GH_TOKEN 来源存在、账户 active，但登录验证失败。只确认代理配置存在，不打印任何环境值、token、完整 Git 配置或带凭据 URL。
+
+- `gh api --include repos/ythyy9/Novel/pulls/1` 退出 1：`Get https://api.github.com/repos/ythyy9/Novel/pulls/1: Forbidden`。未获得 GitHub 响应头或响应正文。
+- 无认证 `curl -I --max-time 20 https://api.github.com/` 退出 56：`HTTP/1.1 403 Forbidden`、`content-type: text/plain`、`server: envoy`，错误 `CONNECT tunnel failed, response 403`。
+- 安全日志：`.local-validation/cloud-20261014/github-diagnostic.log`。没有 GH_DEBUG、Authorization 输出、绕过代理或变更环境权限。
+- 证据支持代理 CONNECT 层拒绝；不能据 auth status 的 invalid 提示证明 token 无效，没有 GitHub 速率限制或仓库权限响应可供判断。最小缺口：环境管理侧核查既有代理对 `api.github.com:443` 的拒绝；若需新增域名许可或秘密，必须由聊天侧处理，本任务不自行扩大权限。此操作是网络拒绝，不是自动审批拒绝。
+- PR 标题/描述更新尚未执行；父会话此前只读确认的 Draft 状态仍作为独立证据保留，不能写成本地权限恢复。Git 分支读写仍正常，工程继续。诊断新增 API 请求失败 1 次、auth 验证失败 1 次和无认证代理探针失败 1 次，均保留，不重复无信息请求。
+
+## 接续阶段：有限范围原文读取
+
+新增 `excerpt BOOK PATH [--revision REVISION] [--start-line N] [--line-count N]`。默认最多 100 行，返回固定版本、完整源哈希、总行数、实际行范围、逐行文本和 has_more。复用版本归属、路径及不可变快照校验；不改变模型任务包或审核门禁。范围必须为正整数，缺失文件、越界起点及跨作品版本拒绝。
+
+实际命令 `python -m unittest discover -s tests -v` 退出 0：140 项、138 通过、2 Windows 专属跳过，19.717 秒。日志 `.local-validation/cloud-20261014/excerpt-final.log`。覆盖中文/emoji/空行、历史版本、末尾截断、默认当前版、无写入、非法参数与真实 CLI。本阶段无新增失败；工程失败运行累计仍为 3 次（4 个失败/错误用例），夹具返修 3 次，补丁上下文失败 1 次。静态审查和 `git diff --check` 通过。未运行模型或真人阅读验收。
+
+下一工程候选：为任务恢复提供稳定分页的检索结果，明确版本与翻页边界，避免当前全量逐行输出随长篇规模增长；自动缩减模型输入和依赖闭包仍未实现，不将本阶段称为完整长篇上下文系统。远程 PR 管理等待环境代理检查，独立工程没有作者决策阻塞。

@@ -169,6 +169,35 @@ class EngineTests(unittest.TestCase):
             with self.subTest(start=start, end=end), self.assertRaises(ValueError):
                 self.engine.diff("test-book", start, end)
 
+    def test_excerpt_is_bounded_versioned_and_read_only(self):
+        previous = self.write(content="一\n\n三🌊\n四\n")["result_revision"]
+        self.write(kind="revise", content="新版本\n")
+        before = self.engine.audit()
+        report = self.engine.excerpt("test-book", "manuscript/001.md", previous, 2, 2)
+        self.assertEqual(report["lines"], [{"line": 2, "text": ""}, {"line": 3, "text": "三🌊"}])
+        self.assertEqual(report["total_lines"], 4)
+        self.assertTrue(report["has_more"])
+        self.assertEqual(report["end_line"], 3)
+        tail = self.engine.excerpt("test-book", "manuscript/001.md", previous, 4, 100)
+        self.assertFalse(tail["has_more"])
+        self.assertEqual(tail["source_hash"], report["source_hash"])
+        current = self.engine.excerpt("test-book", "manuscript/001.md")
+        self.assertNotEqual(current["source_hash"], report["source_hash"])
+        self.assertEqual(current["lines"], [{"line": 1, "text": "新版本"}])
+        self.assertEqual(self.engine.audit(), before)
+
+    def test_excerpt_rejects_invalid_windows_missing_paths_and_foreign_version(self):
+        self.write()
+        for start, count in ((0, 1), (1, 0), (-1, 1), (1, -1), (True, 1), (1, 1.5), (1000, 1)):
+            with self.subTest(start=start, count=count), self.assertRaises(ValueError):
+                self.engine.excerpt("test-book", "manuscript/001.md", start_line=start, line_count=count)
+        for path in ("../escape.md", "manuscript/missing.md"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                self.engine.excerpt("test-book", path)
+        foreign = self.engine.create_book("other", "工程样本")["current_revision"]
+        with self.assertRaisesRegex(ValueError, "another book"):
+            self.engine.excerpt("test-book", "canon/state.json", foreign)
+
     def test_impact_rejects_missing_unsafe_and_foreign_revision(self):
         for path in ("manuscript/missing.md", "../state.json", "/tmp/x.md"):
             with self.subTest(path=path), self.assertRaises(ValueError):

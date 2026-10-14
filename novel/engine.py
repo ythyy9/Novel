@@ -640,6 +640,27 @@ class Engine:
         return {"book_id": book_id, "from_revision": from_revision, "to_revision": to_revision,
                 "changes": changes, "scope": "file content changes only; not semantic impact or review approval"}
 
+    def excerpt(self, book_id, path, revision=None, start_line=1, line_count=100):
+        """Return a bounded, versioned reading window with source identity."""
+        validate_path(path)
+        if type(start_line) is not int or type(line_count) is not int or start_line < 1 or line_count < 1:
+            raise EngineError("start_line and line_count must be positive integers")
+        revision = revision or self.book(book_id)["current_revision"]
+        files = self.files(book_id, revision)
+        if path not in files:
+            raise EngineError("File is absent from this version")
+        content = files[path]
+        lines = content.splitlines()
+        if start_line > max(1, len(lines)):
+            raise EngineError("start_line is beyond the end of this file")
+        selected = lines[start_line - 1:start_line - 1 + line_count]
+        end_line = start_line + len(selected) - 1
+        return {"book_id": book_id, "revision": revision, "path": path,
+                "source_hash": digest(content), "total_lines": len(lines),
+                "start_line": start_line, "end_line": end_line,
+                "lines": [{"line": start_line + i, "text": line} for i, line in enumerate(selected)],
+                "has_more": end_line < len(lines)}
+
     def impact(self, book_id, path, revision=None):
         """Report explicit evidence within one revision, not inferred causality."""
         from .records import _json, _research, validate_state

@@ -170,6 +170,7 @@ python -m novel impact BOOK manuscript/001.md
 python -m novel impact BOOK manuscript/001.md --revision REVISION
 python -m novel search BOOK '证据原文' --revision REVISION
 python -m novel diff BOOK OLD_REVISION --to-revision NEW_REVISION
+python -m novel excerpt BOOK manuscript/001.md --revision REVISION --start-line 20 --line-count 40
 ```
 
 返回实际查询的版本、源文件 SHA-256，以及 `canon/state.json` 中引用该文件的记录：分区、稳定 ID、陈述、知识类别、持有者和精确原文证据。默认查询一次固定的当前快照，也可查询同一本书的历史版本；文件不存在或版本属于其他作品会报错。命令不改变任务、重试次数、审核状态或作品版本，不调用模型。
@@ -179,6 +180,8 @@ python -m novel diff BOOK OLD_REVISION --to-revision NEW_REVISION
 这是返修前核对依据的入口：逐条检查证据是否仍支持原陈述，再安排必要的状态更新和审核。空列表仅表示没有相应显式记录，不能表示无需跨章复核；正文的隐含因果不在本查询范围。候选、误解和人物所知保留原类别，不会因此升级为作品事实。研究声明影响不等于结论已被采用，审核覆盖也不等于审核通过；是否可通过仍由 `assess` 和 `accept` 的完整门禁决定。
 
 `diff` 比较同一本书的两个不可变快照；省略 `--to-revision` 时固定为查询开始时的当前版本。返回按路径排序的新增、删除和修改清单，以及前后 SHA-256；不存在的一侧为 `null`，内容相同的文件不列出。反向比较历史快照也可能产生“删除”，这不表示命令删除了文件。两端快照都经过完整性与作品归属校验。命令只比较内容，不判断正文质量、语义影响或是否通过审核，可配合两个版本的 `impact` 分别回查依据。
+
+`excerpt` 按 1 起始的行号返回有限原文，默认从第 1 行读取最多 100 行。结果携带固定版本、完整源文件哈希、总行数、实际终止行、带行号的文本及 `has_more`。行数不足时返回到文件末尾，不补齐、不改写；范围必须为正整数，起始行超出文件时报错。输出行文本不含换行符，若需要完整原始文本仍使用 `read`。这些只读入口支持操作员按需检索；目前模型任务包仍携带完整版本，不自动截断研究依据或状态依赖。
 
 ## 存储、备份与权限边界
 
