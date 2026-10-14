@@ -119,3 +119,30 @@
 本任务已实际使用现有 GitHub MCP 连接器：读取 PR #1 最新正文，保留父会话及既有内容，仅追加本阶段分页/恢复测试、143 项结果和真实 Codex 阻塞。`github_update_pull_request` 成功，随后独立 `github_get_pr_info` 回读正文完全一致，draft=true、state=open、merged=false、base=main、head=codex/v1-local-workflow，SHA=b2198a6，updated_at=2026-10-14T15:55:34Z。未改 base、Draft、reviewers 或发送评论。PR 管理已由既有连接器完成；gh 代理通道未恢复。
 
 用户随后批准仅为 Novel 放行 api.github.com HTTPS443。工具发现未提供按域名修改本执行环境网络策略的接口，不能把通用网络/无沙箱权限当成窄域名授权。未申请全网、未改代理、未新加秘密、未作无信息重试。父聊天可通过环境管理入口处理；该网络问题与真实 Codex app-server 的只读文件系统阻塞分开保存。
+
+## 初始化只读文件系统定位（未重试模型任务）
+
+起点 `9b0a2b0cdcea53aaf3e54cd5cd1b230ab84dba72`，工作区干净。PR 管理默认使用已验收 GitHub 连接器，不再以 gh CONNECT403 停止 PR 工作；未改网络。
+
+只读检查 CLI 0.159.2 帮助、已安装二进制的配置标识及官方[配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。参考明确提供 `sqlite_home`（SQLite 运行状态）和 `log_dir`（日志）配置，同时说明它们不是托管云策略存储重定向；本次只对嵌套 CLI 进程传入配置，没有修改托管环境策略。参考未列出 installation_id 独立路径设置。没有推断未知私有 flag 的支持性。
+
+两次**仅 app-server 初始化**诊断均使用 stdin=DEVNULL，没有 initialize/thread/turn 请求、没有模型 prompt，不执行 task-run；采用现有脱敏子进程环境。未改 CODEX_HOME、认证文件或沙箱。strace 只记录失败文件系统调用，不记录 read/write 数据、请求头或认证内容。
+
+1. `strace -f -e trace=mkdir,mkdirat,openat -e status=failed -o <日志>/appserver-failed-paths.log codex app-server --stdio`，CLI 退出 1。stderr 明确：`failed to initialize sqlite state runtime under /run/codex-environment/codex-home`。本层跟踪未包含 open/chmod，所以不能据日志缺少 EROFS 推断文件系统可写。
+2. 在授权工作区创建纯运行诊断目录，使用 `codex --strict-config -c 'sqlite_home="/workspace/Novel/.local-validation/cloud-20261014/codex-runtime-diagnostic/state"' -c 'log_dir="/workspace/Novel/.local-validation/cloud-20261014/codex-runtime-diagnostic/logs"' app-server --stdio`，配合 `strace -f -e trace=%file -e status=failed`。CLI 仍退出 1；工作区已产生 state_5、logs_2、queue_1、goals_1、memories_1 SQLite 文件，说明运行状态目录参数实际生效，但尚未完成 app-server 初始化。
+
+第二次确切拒绝调用：
+
+```text
+chmod("/run/codex-environment/codex-home/tmp/arg0", 0700) = -1 EROFS
+openat(4, "uid_map", O_RDWR|O_CLOEXEC) = -1 EROFS
+open("/run/codex-environment/codex-home/installation_id", O_RDWR|O_CREAT|O_LARGEFILE|O_CLOEXEC, 0644) = -1 EROFS
+```
+
+`tmp/arg0` 对应先前非致命 PATH aliases 警告；运行状态重定向后末尾失败指向 Codex 安装标识 `installation_id` 的创建/读写打开。`uid_map` 同时表明环境内命名空间相关写操作被拒绝，未尝试调整。无法仅凭该跟踪保证修复 installation_id 后不再遇到其他限制。
+
+日志根仍为 `.local-validation/cloud-20261014/`：`appserver-init.stderr`、`appserver-failed-paths.log`、`appserver-configured.stderr`、`appserver-configured-paths.log`。包装 Python 命令退出 0 是成功记录诊断，不是 CLI 成功；两次 CLI exit=1。纯运行目录留作诊断证据，未把局部有效的目录覆盖写入 Novel 适配器。
+
+结论：SQLite/日志可在工作区生成，但完整初始化仍必须写当前 CODEX_HOME 下安装标识；没有找到保留当前认证原位且独立重定向该标识的官方支持配置。需平台提供符合当前只读挂载/身份边界的 CLI 初始化支持，或官方受支持的状态/安装标识分离配置。未申请提权、改挂载、重设 CODEX_HOME、搬认证、替换模型或削弱沙箱；不能宣称修复。
+
+重新回读原审核任务：`blocked / tool_failure / attempts=1 / no_progress=0`，未恢复、未重试。audit 返回 database=ok、snapshots_verified=2、events=8。模型调用累计仍为此前 1 次失败、0 次重试；本轮新增初始化诊断失败 2 次（与模型次数分列）。源码及测试未变，不重复全套测试；工程失败/返修累计保持原值。下一必要动作由平台解决该具体运行边界，有明确修复证据后才按原任务协议恢复同一任务并单次验证。
