@@ -797,9 +797,30 @@ class Engine:
                     raise EngineError("Invalid current revision pointer")
             for review in db.execute("SELECT * FROM reviews"):
                 self._verify_review(review, self._row(db, "tasks", review["task_id"]))
-            for task in db.execute("SELECT * FROM tasks WHERE result IS NOT NULL"):
-                if digest(task["result"]) != task["result_hash"]:
-                    raise EngineError("Stored task result integrity failure")
+            for task in db.execute("SELECT * FROM tasks"):
+                self._row(db, "books", task["book_id"])
+                source = self._row(db, "revisions", task["input_revision"])
+                if source["book_id"] != task["book_id"]:
+                    raise EngineError("Task input revision belongs to another book")
+                if task["result"] is not None:
+                    if digest(task["result"]) != task["result_hash"]:
+                        raise EngineError("Stored task result integrity failure")
+                    result = json.loads(task["result"])
+                    if result.get("task_id") != task["id"] or result.get("input_revision") != task["input_revision"]:
+                        raise EngineError("Stored task result identity mismatch")
+                if task["result_revision"] is not None:
+                    output = self._row(db, "revisions", task["result_revision"])
+                    if output["book_id"] != task["book_id"]:
+                        raise EngineError("Task output revision belongs to another book")
+                    if task["status"] != "completed" or task["result"] is None:
+                        raise EngineError("Task output revision lacks a completed result")
+                    if task["kind"] == "review":
+                        if output["id"] != source["id"]:
+                            raise EngineError("Review output differs from its input revision")
+                    elif output["task_id"] != task["id"] or output["parent"] != source["id"]:
+                        raise EngineError("Task output revision provenance mismatch")
+                elif task["status"] == "completed":
+                    raise EngineError("Completed task has no output revision")
             events = db.execute("SELECT count(*) FROM events").fetchone()[0]
         return {"database": "ok", "snapshots_verified": len(versions), "events": events,
                 "protection": "validated controller operations; not OS isolation"}

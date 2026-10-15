@@ -76,6 +76,41 @@ class EngineTests(unittest.TestCase):
     def task(self, task_id):
         return next(task for task in self.engine.tasks() if task["id"] == task_id)
 
+    def test_audit_rejects_missing_and_foreign_task_input_revisions(self):
+        task = self.engine.enqueue("test-book", "write", "audit fixture")
+        other = self.engine.create_book("other", "独立审计夹具")
+        for revision in ("missing", other["current_revision"]):
+            with self.subTest(revision=revision):
+                with closing(sqlite3.connect(self.engine.db_path)) as db:
+                    db.execute("UPDATE tasks SET input_revision=? WHERE id=?", (revision, task["id"]))
+                    db.commit()
+                with self.assertRaises(ValueError):
+                    self.engine.audit()
+        with closing(sqlite3.connect(self.engine.db_path)) as db:
+            db.execute("UPDATE tasks SET input_revision=? WHERE id=?", (task["input_revision"], task["id"]))
+            db.commit()
+        self.assertEqual(self.engine.audit()["database"], "ok")
+
+    def test_audit_rejects_missing_foreign_and_unrelated_task_output_revisions(self):
+        task = self.write()
+        other = self.engine.create_book("other", "独立审计夹具")
+        for revision in ("missing", other["current_revision"], task["input_revision"], None):
+            with self.subTest(revision=revision):
+                with closing(sqlite3.connect(self.engine.db_path)) as db:
+                    db.execute("UPDATE tasks SET result_revision=? WHERE id=?", (revision, task["id"]))
+                    db.commit()
+                with self.assertRaises(ValueError):
+                    self.engine.audit()
+        with closing(sqlite3.connect(self.engine.db_path)) as db:
+            db.execute("UPDATE tasks SET result_revision=? WHERE id=?", (task["result_revision"], task["id"]))
+            db.commit()
+        self.assertEqual(self.engine.audit()["database"], "ok")
+        with closing(sqlite3.connect(self.engine.db_path)) as db:
+            db.execute("UPDATE tasks SET input_revision=? WHERE id=?", (task["result_revision"], task["id"]))
+            db.commit()
+        with self.assertRaisesRegex(ValueError, "identity mismatch"):
+            self.engine.audit()
+
     def test_initial_book_is_persisted_and_uses_real_sqlite(self):
         first = self.engine.book("test-book")
         reopened = Engine(self.root)
