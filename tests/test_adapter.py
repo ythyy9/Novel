@@ -37,12 +37,24 @@ class FakeEngine:
         self.file_calls.append((book_id, revision))
         return dict(self.snapshot)
 
-    def claim(self, task_id):
+    def claim(self, task_id, *, expected_attempt=None):
         self.claims += 1
         self.record["attempts"] += 1
         self.record["status"] = "running"
 
-    def block(self, task_id, reason, detail):
+    def execution_inputs(self, task_id, *, expected_attempt=None):
+        task = self.task(task_id)
+        if task["status"] != "running":
+            raise ValueError("requires a running task")
+        if expected_attempt is not None and task["attempts"] != expected_attempt:
+            raise ValueError("superseded execution attempt")
+        return task, self.files(task["book_id"], task["input_revision"]), {}
+
+    def block(self, task_id, reason, detail, *, expected_attempt=None):
+        if expected_attempt is not None and (
+            self.record["attempts"] != expected_attempt or self.record["status"] != "running"
+        ):
+            return
         self.blocks.append((task_id, reason, detail))
         self.record["status"] = "blocked"
 
@@ -168,6 +180,8 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(popen.call_count, 1)
         self.assertEqual(caught.exception.reason, "no_progress")
         self.assertEqual(self.engine.record["attempts"], 1)
+        self.assertEqual(self.engine.record["status"], "running")
+        self.assertEqual(self.engine.blocks, [])
 
     def test_preflight_failure_blocks_without_spawning(self):
         status = ready()
