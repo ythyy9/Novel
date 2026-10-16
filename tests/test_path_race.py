@@ -79,6 +79,32 @@ class PathRaceTests(unittest.TestCase):
         with patch.object(Path, 'lstat', linked_parent), self.assertRaises(EngineError):
             checked_path(self.root, 'runtime/missing.txt')
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows directory rename contention')
+    def test_transient_snapshot_rename_preserves_complete_publication(self):
+        original = Path.rename
+        attempts = []
+        def rename(path, target):
+            attempts.append(path)
+            if len(attempts) == 1:
+                raise PermissionError('temporary snapshot contention')
+            return original(path, target)
+        opened = Engine(self.root)
+        with patch.object(Path, 'rename', rename):
+            opened.create_book('fixture', 'Fixture')
+        self.assertEqual(len(attempts), 2)
+        self.assertIn('canon/state.json', opened.files('fixture'))
+        self.assertEqual(opened.audit()['database'], 'ok')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows directory rename contention')
+    def test_permanent_snapshot_rename_error_does_not_publish(self):
+        opened = Engine(self.root)
+        with patch.object(Path, 'rename', side_effect=PermissionError('permanent denial')) as rename:
+            with self.assertRaises(PermissionError):
+                opened.create_book('fixture', 'Fixture')
+        self.assertEqual(rename.call_count, 4)
+        self.assertEqual(opened.list_books(), [])
+        self.assertEqual(opened.audit()['database'], 'ok')
+
 
 class WindowsResolutionTests(unittest.TestCase):
     def deleted_probe(self, *, persistent=False, next_error=None):

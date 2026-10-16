@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import sqlite3
 import stat
+import time
 import uuid
 
 from .records import ValidationError, validate_path, validate_result
@@ -273,7 +274,16 @@ class Engine:
         for relative, content in files.items():
             self._new_file(checked_path(staging, relative), content)
         self._new_file(staging / "manifest.json", canonical(manifest) + "\n")
-        staging.rename(base)
+        for attempt in range(4):
+            try:
+                checked_path(self.root, staging.relative_to(self.root).as_posix())
+                checked_path(self.root, base.relative_to(self.root).as_posix())
+                staging.rename(base)
+                break
+            except PermissionError:
+                if os.name != "nt" or attempt == 3:
+                    raise
+                time.sleep(0.05 * (2 ** attempt))
         return revision
 
     def _read_snapshot(self, book_id, revision):
