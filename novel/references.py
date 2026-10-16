@@ -6,6 +6,7 @@ interpretations, never a certificate of completeness or reader acceptance.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import date
 import json
 import os
@@ -203,7 +204,7 @@ class ReferenceLibrary:
             else:
                 state = {"schema_version": VERSION, "id": self.id, "seed": {"title": title, "author": author},
                          "series": title, "works": {}, "editions": [], "jobs": {}, "downloads": {},
-                         "discovery_generation": 0, "discovery_history": [], "discovery_gaps": ["尚未联网核对系列、番外和附录"],
+                         "discovery_generation": 0, "discovery_history": [], "discovery_gaps": ["��δ�����˶�ϵ�С�����͸�¼"],
                          "authorized_urls": {}, "stop": None, "resumptions": [], "bindings": [], "series_reports": []}
             wid = identifier(work_id or self.id)
             existing = state["works"].get(wid)
@@ -366,7 +367,7 @@ class ReferenceLibrary:
         if work["expected_words"] and english_count and report["word_count"] < work["expected_words"] * .85:
             gaps.append(f"word_count_shortfall: {report['word_count']} / approximately {work['expected_words']}")
         elif work["expected_words"] and not english_count:
-            gaps.append("count_units_unverified: 未将英文词元计数与其他语言的字数/词数直接比较")
+            gaps.append("count_units_unverified: δ��Ӣ�Ĵ�Ԫ�������������Ե�����/����ֱ�ӱȽ�")
         return gaps
 
     def run(self, *, max_calls=24, timeout=600, resume_note=None, runner=None, fetcher=None):
@@ -413,7 +414,7 @@ class ReferenceLibrary:
                 # Bibliography/search outages do not prevent reading already held
                 # material. Quota/authentication stops still apply to all calls.
                 state["discovery_blocked"] = state["stop"]
-                state["discovery_gaps"] = ["本次书目查询失败，需明确接续后重试: " + state["stop"]["detail"]]
+                state["discovery_gaps"] = ["������Ŀ��ѯʧ�ܣ�����ȷ����������: " + state["stop"]["detail"]]
                 state["stop"] = None
                 self.save(state)
             evidence = []
@@ -450,7 +451,7 @@ class ReferenceLibrary:
                 previous = self._previous(state, edition["reports"])
                 packet = {"scope": "edition", "work": work, "source_sha256": edition["source"]["sha256"],
                           "evidence": reading, "coverage": {"total_chars": len(text), "covered_chars": sum(r["end"] - r["start"] for r in reading)},
-                          "known_gaps": self._edition_gaps(work, edition) + ["未与出版社完整正文逐字核对"],
+                          "known_gaps": self._edition_gaps(work, edition) + ["δ������������������ֺ˶�"],
                           "previous_report": previous}
                 # Prior report is supplied only when evidence changes, to keep cache keys stable.
                 signature = sha(canonical({k: v for k, v in packet.items() if k != "previous_report"}).encode())
@@ -511,11 +512,11 @@ class ReferenceLibrary:
     def _gaps(self, state):
         gaps = list(state["discovery_gaps"])
         if not state["discovery_history"]:
-            gaps.append("系列书目、番外和附录尚未完成联网核验")
+            gaps.append("ϵ����Ŀ������͸�¼��δ�����������")
         for work in state["works"].values():
             editions = [e for e in state["editions"] if e["work_id"] == work["id"]]
             if not editions:
-                gaps.append(work["title"] + ": 缺全文；只有书目，不能据此分析内容")
+                gaps.append(work["title"] + ": ȱȫ�ģ�ֻ����Ŀ�����ܾݴ˷�������")
             for edition in editions:
                 gaps.extend(work["title"] + ": " + g for g in self._edition_gaps(work, edition))
                 if edition.get("verification_error"):
@@ -524,22 +525,39 @@ class ReferenceLibrary:
                 try:
                     done, total = self._coverage(state, edition)
                     if total and done < total:
-                        gaps.append(f"{work['title']}: 阅读覆盖 {done}/{total} 字符，尚未读完")
+                        gaps.append(f"{work['title']}: �Ķ����� {done}/{total} �ַ�����δ����")
                     if total and not edition.get("active_report"):
-                        gaps.append(work["title"] + ": 全书综合尚未完成")
+                        gaps.append(work["title"] + ": ȫ���ۺ���δ���")
                 except (ValueError, OSError) as exc:
                     gaps.append(work["title"] + ": " + str(exc))
-        gaps.extend("获取失败 " + url + ": " + record.get("error", record["status"])
+        gaps.extend("��ȡʧ�� " + url + ": " + record.get("error", record["status"])
                     for url, record in state["downloads"].items() if record["status"] != "acquired")
         if state["stop"]:
-            gaps.append("执行停止: " + state["stop"]["detail"])
+            gaps.append("ִ��ֹͣ: " + state["stop"]["detail"])
         return list(dict.fromkeys(gaps))
 
+    def _checked_state(self, state):
+        """Invalidate current views on corruption without rewriting historical state."""
+        state = deepcopy(state)
+        for edition in state["editions"]:
+            edition.pop("verification_error", None)
+            try:
+                self.read_artifact(edition["source"])
+                if edition.get("original"):
+                    self.read_artifact(edition["original"])
+                self._coverage(state, edition)
+            except (OSError, ValueError) as exc:
+                edition["verification_error"] = str(exc)
+                edition["active_report"] = None
+                state["active_series_job"] = None
+                state["report_stale"] = True
+        return state
+
     def status(self):
-        state = self.load()
+        state = self._checked_state(self.load())
         editions = []
         for e in state["editions"]:
-            errors = []
+            errors = [e["verification_error"]] if e.get("verification_error") else []
             try:
                 self.read_artifact(e["source"])
                 if e.get("original"):
@@ -563,35 +581,35 @@ class ReferenceLibrary:
                 "reading_evidence": "all text units delivered to model with validated exact quotes; not proof of comprehension"}
 
     def render(self, state=None):
-        state = state or self.load()
-        lines = [f"# 参考系列：{state['series']}", "", f"资料库：{self.id}", "",
-                 "分析是模型解释；完整性未获出版社全文逐字认证。未取得材料不参与内容结论，参考资料不自动进入 Canon。", "", "## 书目与来源", ""]
+        state = self._checked_state(state if state is not None else self.load())
+        lines = [f"# �ο�ϵ�У�{state['series']}", "", f"���Ͽ⣺{self.id}", "",
+                 "������ģ�ͽ��ͣ�������δ�������ȫ��������֤��δȡ�ò��ϲ��������ݽ��ۣ��ο����ϲ��Զ����� Canon��", "", "## ��Ŀ����Դ", ""]
         for w in state["works"].values():
             lines.append(f"- {w['title']} / {w['author']} / {w['kind']} / {w['language']} / {w['edition']}")
             for s in w["sources"]:
-                lines.append(f"  - [{s['title']}]({s['url']})（{s['accessed']}）")
-        lines.extend(["", "## 缺口", ""] + ["- " + g for g in self._gaps(state)])
+                lines.append(f"  - [{s['title']}]({s['url']})��{s['accessed']}��")
+        lines.extend(["", "## ȱ��", ""] + ["- " + g for g in self._gaps(state)])
         for e in state["editions"]:
-            lines.extend(["", "## " + state["works"][e["work_id"]]["title"], "", "底本 SHA-256：" + e["source"]["sha256"], ""])
+            lines.extend(["", "## " + state["works"][e["work_id"]]["title"], "", "�ױ� SHA-256��" + e["source"]["sha256"], ""])
             report = (json.loads(self.read_artifact(state["jobs"][e["active_report"]]["result"]))
                       if e.get("active_report") else self._previous(state, e["reports"]))
             if report:
                 if not e.get("active_report"):
-                    lines.append("以下是历史分析，当前版本/覆盖尚未重新综合。\n")
+                    lines.append("��������ʷ��������ǰ�汾/������δ�����ۺϡ�\n")
                 lines.append(report["summary"])
                 for c in report["conclusions"]:
-                    lines.append("\n- " + c["claim"] + "（证据：" + ", ".join(c["evidence_ids"]) + "）")
+                    lines.append("\n- " + c["claim"] + "��֤�ݣ�" + ", ".join(c["evidence_ids"]) + "��")
                 for r in report["revisions"]:
-                    lines.append("\n- 修订：" + r["previous_claim"] + " → " + r["revised_claim"] + "（证据：" + ", ".join(r["evidence_ids"]) + "）")
-                lines.extend("\n- 分析限制：" + g for g in report["gaps"])
+                    lines.append("\n- �޶���" + r["previous_claim"] + " �� " + r["revised_claim"] + "��֤�ݣ�" + ", ".join(r["evidence_ids"]) + "��")
+                lines.extend("\n- �������ƣ�" + g for g in report["gaps"])
         report = (json.loads(self.read_artifact(state["jobs"][state["active_series_job"]]["result"]))
                   if state.get("active_series_job") else self._previous(state, state["series_reports"]))
         if report:
-            heading = "## 系列综合" if state.get("active_series_job") else "## 历史系列综合（当前尚未完成复核）"
+            heading = "## ϵ���ۺ�" if state.get("active_series_job") else "## ��ʷϵ���ۺϣ���ǰ��δ��ɸ��ˣ�"
             lines.extend(["", heading, "", report["summary"]])
-            lines.extend("\n- " + c["claim"] + "（证据：" + ", ".join(c["evidence_ids"]) + "）" for c in report["conclusions"])
-            lines.extend("\n- 修订：" + r["previous_claim"] + " → " + r["revised_claim"] for r in report["revisions"])
-            lines.extend("\n- 分析限制：" + g for g in report["gaps"])
+            lines.extend("\n- " + c["claim"] + "��֤�ݣ�" + ", ".join(c["evidence_ids"]) + "��" for c in report["conclusions"])
+            lines.extend("\n- �޶���" + r["previous_claim"] + " �� " + r["revised_claim"] for r in report["revisions"])
+            lines.extend("\n- �������ƣ�" + g for g in report["gaps"])
         return "\n".join(lines) + "\n"
 
     def bind(self, engine, book):
@@ -616,7 +634,11 @@ def refresh_bound(engine, book, *, max_calls=24, timeout=600):
     ids = set()
     for path, content in engine.files(book).items():
         if path.startswith("reference/"):
-            ids.update(re.findall(r"<!-- novel-reference:([a-z0-9_-]+) report:[0-9a-f]{64} -->", content))
+            marker = re.match(r"<!-- novel-reference:([a-z0-9][a-z0-9_-]{0,63}) report:([0-9a-f]{64}) -->\n", content)
+            if marker and sha(content[marker.end():].encode("utf-8")) == marker[2]:
+                library = ReferenceLibrary(engine.root, marker[1])
+                if library.path("state.json").is_file() and book in library.load()["bindings"]:
+                    ids.add(marker[1])
     if ids and any(t["status"] in ("running", "submitted") for t in engine.tasks(book)):
         raise ValueError("Finish or cancel executing tasks before refreshing bound references")
     results = []

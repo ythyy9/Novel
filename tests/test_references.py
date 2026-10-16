@@ -44,12 +44,12 @@ class FixtureRunner:
                 raise self.discovery_error
             work = ReferenceLibrary.work("fixture", "Fixture", "Tester", "en")
             work["sources"] = [{"url": "https://example.org/catalog", "title": "Engineering fixture, not a real source", "accessed": "2026-10-15"}]
-            return {"series": "Fixture series", "works": [work] + self.more, "gaps": ["这是测试目录，未声称真实检索"]}
+            return {"series": "Fixture series", "works": [work] + self.more, "gaps": ["���ǲ���Ŀ¼��δ������ʵ����"]}
         if mode == "read":
             if self.read_error:
                 raise self.read_error
-            return {"unit_id": packet["unit_id"], "summary": "工程夹具摘要，不是模型阅读。", "findings": [{"kind": "text_fact", "claim": "工程夹具引文", "quote": packet["text"][:30]}], "gaps": []}
-        return {"summary": "工程夹具综合，不是真实模型分析。", "conclusions": [{"claim": "测试证据传递", "evidence_ids": [x["id"] for x in packet["evidence"]]}], "revisions": [], "gaps": []}
+            return {"unit_id": packet["unit_id"], "summary": "���̼о�ժҪ������ģ���Ķ���", "findings": [{"kind": "text_fact", "claim": "���̼о�����", "quote": packet["text"][:30]}], "gaps": []}
+        return {"summary": "���̼о��ۺϣ�������ʵģ�ͷ�����", "conclusions": [{"claim": "����֤�ݴ���", "evidence_ids": [x["id"] for x in packet["evidence"]]}], "revisions": [], "gaps": []}
 
 
 class ReferenceTests(unittest.TestCase):
@@ -78,7 +78,7 @@ class ReferenceTests(unittest.TestCase):
             reference_io.extract(epub(missing=True), ".epub")
 
     def test_contiguous_lossless_coverage_includes_whitespace(self):
-        text = "前言\n\n" + "正文段落\n" * 21 + "\n附录。\n"
+        text = "ǰ��\n\n" + "���Ķ���\n" * 21 + "\n��¼��\n"
         chunks = list(units(text, 19))
         self.assertEqual("".join(c["text"] for c in chunks), text)
         self.assertEqual(chunks[0]["start"], 0)
@@ -120,7 +120,7 @@ class ReferenceTests(unittest.TestCase):
         result = self.run_library(fetcher=denied)
         self.assertEqual(result["catalogued_works"], 2)
         self.assertTrue(result["editions"][0]["all_units_analyzed"])
-        self.assertTrue(any("缺全文" in g for g in result["gaps"]))
+        self.assertTrue(any("ȱȫ��" in g for g in result["gaps"]))
         self.assertIsNone(result["stop"])
 
     def test_readable_copy_does_not_suppress_new_full_edition(self):
@@ -141,7 +141,7 @@ class ReferenceTests(unittest.TestCase):
         result = self.run_library()
         self.assertTrue(result["editions"][0]["all_units_analyzed"])
         self.assertIsNone(result["stop"])
-        self.assertTrue(any("书目查询失败" in g for g in result["gaps"]))
+        self.assertTrue(any("��Ŀ��ѯʧ��" in g for g in result["gaps"]))
         self.runner.calls.clear()
         self.run_library()
         self.assertEqual(self.runner.calls, [])
@@ -216,8 +216,8 @@ class ReferenceTests(unittest.TestCase):
 
     def test_chinese_character_count_is_not_compared_as_english_words(self):
         text = self.root / "chinese.txt"
-        text.write_text("第一章\n" + "汉字正文" * 100, encoding="utf-8")
-        self.library.add(text, "中文测试", "测试作者", work_id="chinese", language="zh")
+        text.write_text("��һ��\n" + "��������" * 100, encoding="utf-8")
+        self.library.add(text, "���Ĳ���", "��������", work_id="chinese", language="zh")
         state = self.library.load()
         state["works"]["chinese"]["expected_words"] = 400
         self.library.save(state)
@@ -264,6 +264,53 @@ class ReferenceTests(unittest.TestCase):
         result = self.library.status()
         self.assertFalse(result["editions"][0]["all_units_analyzed"])
         self.assertIn("hash mismatch", result["editions"][0]["errors"][0])
+
+    def test_tampered_source_invalidates_series_and_bound_report(self):
+        self.run_library()
+        before = self.library.load()
+        historical = self.library.read_artifact(before["latest_report"])
+        self.library.path(before["editions"][0]["source"]["path"]).write_bytes(b"tampered")
+        status = self.library.status()
+        self.assertFalse(status["series_analysis_current"])
+        self.assertTrue(any("hash mismatch" in gap for gap in status["gaps"]))
+        self.assertEqual(self.library.load(), before)
+        engine = Engine(self.root)
+        engine.create_book("fiction", "Fixture")
+        bound = self.library.bind(engine, "fiction")
+        self.assertIn("��ʷϵ���ۺ�", bound["text"])
+        self.assertIn("hash mismatch", bound["text"])
+        self.assertEqual(self.library.read_artifact(before["latest_report"]), historical)
+
+    def test_embedded_reference_marker_does_not_trigger_refresh(self):
+        from novel.references import refresh_bound
+        engine = Engine(self.root)
+        engine.create_book("fiction", "Fixture")
+        marker = f"<!-- novel-reference:{self.library.id} report:{'0' * 64} -->"
+        engine.reference("fiction", "Quoted reference data:\n" + marker)
+        with patch.object(ReferenceLibrary, "run") as run:
+            self.assertEqual(refresh_bound(engine, "fiction"), [])
+            run.assert_not_called()
+
+    def test_forged_report_header_does_not_trigger_refresh(self):
+        from novel.references import refresh_bound
+        engine = Engine(self.root)
+        engine.create_book("fiction", "Fixture")
+        marker = f"<!-- novel-reference:{self.library.id} report:{'0' * 64} -->"
+        engine.reference("fiction", marker + "\nNot a controller-generated report.")
+        with patch.object(ReferenceLibrary, "run") as run:
+            self.assertEqual(refresh_bound(engine, "fiction"), [])
+            run.assert_not_called()
+
+    def test_unregistered_report_with_valid_hash_does_not_trigger_refresh(self):
+        from novel.references import refresh_bound
+        engine = Engine(self.root)
+        engine.create_book("fiction", "Fixture")
+        report = self.library.render()
+        marker = f"<!-- novel-reference:{self.library.id} report:{reference_io.sha(report.encode('utf-8'))} -->\n"
+        engine.reference("fiction", marker + report)
+        with patch.object(ReferenceLibrary, "run") as run:
+            self.assertEqual(refresh_bound(engine, "fiction"), [])
+            run.assert_not_called()
 
     def test_new_edition_preserves_old_source_and_report(self):
         self.run_library()
