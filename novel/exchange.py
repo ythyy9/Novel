@@ -217,6 +217,12 @@ def _check_package(engine, package, baseline):
 
 
 def receive(engine, path, baseline=None):
+    # Serialize inbox publication with claim's BEGIN IMMEDIATE transaction.
+    with engine._db(True):
+        return _receive(engine, path, baseline)
+
+
+def _receive(engine, path, baseline=None):
     package = _read(path)
     report = _check_package(engine, package, baseline)
     spec = package["record"]["spec"]
@@ -234,3 +240,70 @@ def receive(engine, path, baseline=None):
     return {"receipt": {"bundle_id": package["id"], "origin": spec["origin"],
                         "operation_id": spec["operation_id"], "status": "received_copy_only",
                         "duplicate": duplicate, "path": relative}, "preflight": report}
+
+
+def guard_claim(engine, db, task):
+    """Fail closed on unprocessed peer evidence; called inside claim transaction.
+
+    A matching selected baseline is acknowledged in the same transaction as the
+    claim. Later local progress must not be mistaken for an unresolved old fork.
+    New peer packages are new evidence and must be checked again.
+    """
+    inbox = checked_path(engine.root, "runtime/exchange/inbox")
+    if not inbox.exists():
+        return
+    acknowledged = set()
+    for row in db.execute("SELECT payload FROM events WHERE event='exchange.baseline_checked' AND book_id=?",
+                          (task["book_id"],)):
+        acknowledged.add(json.loads(row["payload"])["bundle_id"])
+    packages = []
+    for origin in sorted(inbox.iterdir()):
+        identifier(origin.name)
+        directory = checked_path(engine.root, f"runtime/exchange/inbox/{origin.name}")
+        if not directory.is_dir():
+            raise EngineError("Invalid exchange inbox directory")
+        for item in sorted(directory.iterdir()):
+            if item.suffix != ".json":
+                raise EngineError("Unexpected exchange inbox file")
+            identifier(item.stem)
+            path = checked_path(engine.root, f"runtime/exchange/inbox/{origin.name}/{item.name}")
+            package = _read(path)
+            record = package["record"]
+            if record["spec"]["origin"] != origin.name or record["spec"]["operation_id"] != item.stem:
+                raise EngineError("Exchange inbox identity mismatch")
+            books = record["capture"]["books"]
+            if books and task["book_id"] not in books:
+                continue
+            packages.append(package)
+    superseded = set()
+    known = {p["id"]: p for p in packages}
+    for package in packages:
+        record = package["record"]
+        base = record["baseline"]
+        if base and base["id"] in known:
+            older = known[base["id"]]["record"]
+            if (base["state"] != older["state"] or
+                    any(set(record["spec"][k]) != set(older["spec"][k]) for k in ("task_ids", "artifacts"))):
+                raise EngineError("Received baseline chain mismatch")
+            for tid, handoff in record["capture"]["tasks"].items():
+                previous = older["capture"]["tasks"][tid]["task"]
+                if any(handoff["task"][k] < previous[k] for k in ("attempts", "no_progress")):
+                    raise EngineError("Peer handoff resets cumulative counters")
+            superseded.add(base["id"])
+    for package in packages:
+        record = package["record"]
+        peers = [h["task"] for h in record["capture"]["tasks"].values()
+                 if h["task"]["book_id"] == task["book_id"]]
+        for peer in peers:
+            if peer["id"] == task["id"] and peer["status"] in ("completed", "cancelled"):
+                raise EngineError(f"Peer already finished task {task['id']}; do not repeat it")
+        if package["id"] in acknowledged or package["id"] in superseded:
+            continue
+        if any(p["status"] in ("running", "submitted", "blocked", "exhausted") for p in peers):
+            raise EngineError("Peer has active/stopped work; reconcile it before claiming")
+        report = _check_package(engine, package, None)
+        if report["status"] != "same_selected_state":
+            raise EngineError(f"Unreconciled peer bundle {package['id']}: selected state differs or baseline is unknown; run bundle-check")
+        engine._event(db, "exchange.baseline_checked", {"bundle_id": package["id"],
+                      "selected_state_hash": _sha(report["local_state"]),
+                      "scope": "selected evidence only; peer latest state is unknown"}, task["id"], task["book_id"])

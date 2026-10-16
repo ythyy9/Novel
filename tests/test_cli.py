@@ -177,6 +177,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(received["receipt"]["bundle_id"], created["id"])
         self.assertFalse(received["preflight"]["live_import_performed"])
         self.assertEqual(self.json_command("task-show", task["id"])["status"], "queued")
+        self.assertEqual(self.json_command("task-claim", task["id"])["status"], "running")
 
     def test_feedback_diagnosis_cli_preserves_historical_input(self):
         revision = self.json_command("book-show", "cli-book")["current_revision"]

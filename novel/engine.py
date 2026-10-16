@@ -367,11 +367,22 @@ class Engine:
             if task["status"] != "queued":
                 raise EngineError("Only queued tasks can be claimed")
             self._fresh(db, task)
+            from .exchange import guard_claim
+            guard_claim(self, db, task)
             if task["attempts"] >= self.limits()["max_attempts"]:
                 raise EngineError("Cumulative attempt limit exhausted")
             db.execute("UPDATE tasks SET status='running',attempts=attempts+1,updated_at=? WHERE id=?", (now(), task_id))
             self._event(db, "task.claimed", {"attempt": task["attempts"] + 1}, task_id, task["book_id"])
         return self.task(task_id)
+
+    def execution_preflight(self, task_id):
+        with self._db(True) as db:
+            task = self._row(db, "tasks", task_id)
+            if task["status"] != "running":
+                raise EngineError("Execution preflight requires a running task")
+            self._fresh(db, task)
+            from .exchange import guard_claim
+            guard_claim(self, db, task)
 
     def submit(self, task_id, result, *, expected_attempt=None):
         if expected_attempt is not None and (type(expected_attempt) is not int or expected_attempt < 1):
