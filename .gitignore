@@ -14,3 +14,12 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+
+# Local project state and model logs are deliberately not published.
+runtime/
+books/
+.test-tmp/
+.novel-*-test-*/
+.local-validation/
+*.egg-info/
+evaluations/experiments/

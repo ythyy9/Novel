@@ -8,8 +8,16 @@
 - `docs/source/project-proposal.txt`：用户提供的原始材料，保留原文；新增决定另行记录，不改写历史来源。
 - `docs/architecture.md`：原文的可读排版版，包含完整架构与创作要求。
 - `docs/roadmap.md`：第一版建议实施次序与验收证据。
+- `docs/usage.md`、`docs/protocol.md`：真实命令、数据与任务约定。
+- `novel/engine.py`：队列、版本、交接、恢复与阶段门禁；`novel/records.py`：字段和来源校验。
+- `novel/adapter.py`：现有 ChatGPT 登录的 Codex 接入；`novel/evaluation.py`：方法对照记录。
+- `policies/`、`methods/`：项目原则、限额与方法；任务包携带其内容并绑定控制版本。
+- `tests/`、`docs/validation.md`：工程检查与真实执行证据。
+- `docs/references/`：作者选定的参考作品和核验结论；完整资料在本地 `runtime/references/`，不进入新作 Canon。
+- `docs/reference-library.md`、`novel/references.py`：参考书自动检查、系列/番外/附录发现、获取、全部阅读分析与可恢复进度。
+- `lessons/candidates/`：参考分析提炼的待验证方法。它们不自动启用为 `methods/` 或审核门禁；引用原作结论时回查对应证据索引。
 
-目前只有文档。方案中的 `adapters/`、`controller/`、`policies/`、`methods/`、`evaluations/`、`lessons/`、`books/`、`runtime/` 是拟建结构，按实际实施需要创建。
+第一版源码以 `novel/` 包组织，控制器位于该包中。资料根目录的 `books/` 保存不可变版本，`runtime/` 保存 SQLite 队列及模型日志；二者默认不提交 Git。`evaluations/experiments/` 保存实际对照记录，同样默认留在本地。尚未验证的经验不写成普遍规则。
 
 ## 工作边界
 
@@ -22,4 +30,6 @@
 7. 不自动切换付费 API、购买额度或绕过使用限制。具体工具、权限和执行边界按当前任务核实，不把方案选型当作已完成接入。
 8. 完成报告区分文档整理、代码实现、本地验证、远程回读和实际作品反馈。按改动影响验证，不以模型自述或流程运行成功代替真实结果。
 
-本轮初始入库仅建立项目文档。后续任务按用户授权推进实施，并随实际结果更新状态。
+执行 `python -m unittest discover -s tests -v` 验证代码。真实 Codex 调用与工程夹具、模型审核与真人反馈必须分开报告。实际作品与双端验收范围见 `docs/local-cloud-handoff-2026-10-16.md`；不能把工程样本写成作者作品或用模拟结果冒充真实执行。
+
+作者已授权所有后续参考书采用 `reference-add` / `reference-use` 流程，查找整个系列、番外和附录，并完整阅读分析实际取得的内容；缺失材料列明缺口后继续，不把缺失视为已读取。默认原语言未删节版本，原件和版本分别保留；不拼接不同译本，不自动购买、登录、下载未经授权全文或设置定时任务。创作使用时以 `--book` 或 `task-create --reference` 绑定报告；已有绑定由 CLI 创建任务时刷新。书目核验、实际获取、阅读覆盖与分析正确性分别报告，旧分析和作者决定不得改写。
