@@ -333,3 +333,16 @@ v2新增完整选定任务事件并纳入状态哈希；v1仍可读取但不能a
 真实重复receive/apply/confirm/ack无重复事件或执行；对真实返回包的本地工程派生分支验证旧包不回退、diverged拒绝、缺附件停止及历史stop/resume/attempts=2保留。派生分支不是文学作品或实时分布式锁。传输中两次引用下载代理403保留，随后同一已授权连接器支持的有界legacy字节返回成功；未改变网络、认证或权限。一次反馈ID只读误查、一次工程脚本重带已有只追加修订记录的拒绝及修正另留，均不计为真实创作模型重试，也不改写此前累计失败。
 
 真实反馈诊断复用已有接口：初次任务指令已预填沈照，不能由输出推知模型内心动机或姓氏总体频率；作者定名艾宁、字形线索、原话、旧稿及实际差异均保留。后续片段保留宁字末钩线索，61处最终状态引文命中。只对本作任务包实施约束，不自动升级通用methods或门禁。作者新版阅读及文学/命名方法效果pending；共同下一步是等待作者阅读当前第二版和试读。未嵌套调用模型、未建Notion系统。本地原分支两个未推送提交及未提交参考书功能保持原状，尚未合并源码历史；不能宣称正式工作区已整体同步。
+
+
+## Windows路径解析失败定位（2026-10-16，尚非修复结论）
+
+从远端最新b8707c9e6dd160f33560a19f3432b1a5944e79c1克隆到隔离源码目录`.local-validation/ci-path-fix-20261016/`。原`/workspace/Novel`仍为d71c3f9，真实双端验收data不使用新控制器、不作修改。保留父端两份交接文档。
+
+保留原失败：b870 push run38890393880四组success；PR run38890400028 Windows3.13 job116938210039在test_receive_serializes_with_claim预期active/stopped却得到Path escapes project，185项中1失败。Windows3.11 job116938210178整体cancelled（test step success），不是四组全绿。云端已独立读取原Windows3.13日志，存隔离副本`.local-validation/path-resolution/original-job-116938210039.log`。此类已核实Windows失败job从2累计为3，旧失败不被后续通过覆盖。
+
+当前checked_path已有扩展drive/UNC前缀归一化。确定性Windows路径返回夹具验证同盘大小写、普通/扩展drive与UNC均通过；不同盘、兄弟目录和不同UNC端点仍拒绝。这些通过说明候选不足以解释原失败，不能冒称复现成功。参考CPython官方v3.13.9 Lib/ntpath.py的realpath实现，缺失路径解析和去前缀有额外系统调用；原CI未记录实际路径，不能据此锁定具体竞态。
+
+本提交只增加拒绝时的原路径与已解析比较路径诊断，仍只解析各一次、保留原拒绝条件与lstat/reparse检查；另在真实Windows重复原receive/claim场景50轮取得证据。Linux定向7项/6通过/1 Windows诊断跳过，exit0，spelling-diagnostic.log；不称作真实Windows验证。未调用模型、未改网络权限或作品。
+
+本次Linux全量 `python -m unittest discover -s tests -v` exit=0，188项/185通过/3 Windows跳过，日志diagnostic-full.log；git diff --check exit=0。下一步按新诊断提交分别读取push和PR CI，取得Windows真实路径后再决定修复，不重跑原失败冒充关闭。

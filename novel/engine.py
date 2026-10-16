@@ -77,8 +77,12 @@ def checked_path(root: Path, relative: str) -> Path:
                 resolved = resolved[4:]
         return Path(resolved)
 
-    if not comparison_path(path).is_relative_to(comparison_path(root)):
-        raise EngineError("Path escapes project")
+    resolved_path = comparison_path(path)
+    resolved_root = comparison_path(root)
+    if not resolved_path.is_relative_to(resolved_root):
+        raise EngineError(
+            f"Path escapes project: path={str(path)!r}, root={str(root)!r}, "
+            f"resolved_path={str(resolved_path)!r}, resolved_root={str(resolved_root)!r}")
     return path
 
 

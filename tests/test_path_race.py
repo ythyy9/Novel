@@ -1,5 +1,6 @@
 """Deterministic disappearing sidecar regression; retain link/attribute checks."""
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+import os
 import stat
 import tempfile
 from types import SimpleNamespace
@@ -77,3 +78,48 @@ class PathRaceTests(unittest.TestCase):
             return original(path, *args, **kwargs)
         with patch.object(Path, 'lstat', linked_parent), self.assertRaises(EngineError):
             checked_path(self.root, 'runtime/missing.txt')
+
+
+class WindowsResolutionTests(unittest.TestCase):
+    def check_resolved(self, root_text, child_text):
+        from novel import engine
+        root = PureWindowsPath(root_text)
+        class WindowsFixture(PureWindowsPath):
+            def lstat(self):
+                return SimpleNamespace(st_mode=stat.S_IFREG | 0o600)
+            def resolve(self):
+                return root_text if self == root else child_text
+        fixture = WindowsFixture(root_text)
+        # Exercise Windows spelling without pretending the host is Windows or
+        # changing global os.name. Actual filesystem/reparse tests remain above.
+        with patch.object(engine, 'os', SimpleNamespace(name='nt')), patch.object(engine, 'Path', PureWindowsPath):
+            return checked_path(fixture, 'runtime/novel.sqlite3-shm')
+
+    def test_equivalent_windows_drive_and_unc_resolution(self):
+        slash = chr(92)
+        drive = 'D:/work/Novel'
+        unc = slash * 2 + 'server/share/Novel'
+        prefix = slash * 2 + '?' + slash
+        cases = [(drive, prefix + 'd:' + slash + 'WORK' + slash + 'Novel/runtime/novel.sqlite3-shm'),
+                 (prefix + 'D:' + slash + 'work/Novel', 'd:/WORK/Novel/runtime/novel.sqlite3-shm'),
+                 (unc, prefix + 'UNC' + slash + 'SERVER/share/Novel/runtime/novel.sqlite3-shm')]
+        for root, child in cases:
+            with self.subTest(root=root, child=child):
+                self.check_resolved(root, child)
+
+    def test_windows_resolved_escapes_still_rejected(self):
+        prefix = chr(92)*2 + '?' + chr(92)
+        for child in ['D:/work/Novel-other/runtime/x', 'E:/work/Novel/runtime/x',
+                      prefix + 'D:' + chr(92) + 'elsewhere/runtime/x',
+                      prefix + 'UNC' + chr(92) + 'other/share/Novel/runtime/x']:
+            with self.subTest(child=child), self.assertRaisesRegex(EngineError, 'Path escapes project'):
+                self.check_resolved('D:/work/Novel', child)
+
+    @unittest.skipUnless(os.name == 'nt', 'Real Windows concurrency diagnostic')
+    def test_windows_repeated_receive_and_claim(self):
+        import test_exchange_gate
+        for iteration in range(50):
+            with self.subTest(iteration=iteration):
+                result = unittest.TestResult()
+                test_exchange_gate.ExchangeGateTests('test_receive_serializes_with_claim').run(result)
+                self.assertTrue(result.wasSuccessful(), result.errors + result.failures)
