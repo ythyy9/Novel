@@ -101,6 +101,24 @@ class ExchangeGateTests(unittest.TestCase):
         with self.assertRaisesRegex(EngineError, 'resets cumulative'):
             self.b.claim(self.task['id'])
 
+    def test_peer_evidence_arriving_during_probe_prevents_spawn_and_releases_reservation(self):
+        from novel import adapter
+        self.b.claim(self.task['id'])
+        def doctor(_):
+            self.a.claim(self.task['id'])
+            self.a.block(self.task['id'], 'no_progress', 'Peer stopped during probe')
+            exchange.receive(self.b, self.package(self.a, 'during-probe'))
+            return {'ready': True, 'chatgpt_login': True,
+                    'model_defaults': {'model': 'fixture-only', 'reasoning_effort': 'high'}}
+        with patch.object(adapter, 'doctor', side_effect=doctor), patch.object(adapter.subprocess, 'Popen') as popen:
+            with self.assertRaisesRegex(EngineError, 'active/stopped'):
+                adapter.run(self.b, self.task['id'])
+            popen.assert_not_called()
+        marker = self.b.root / 'runtime/tasks' / self.task['id'] / 'attempt-1/execution-started.json'
+        self.assertFalse(marker.exists())
+        self.assertEqual(self.b.task(self.task['id'])['status'], 'running')
+        self.assertEqual(self.b.task(self.task['id'])['attempts'], 1)
+
     def test_tampered_inbox_fails_closed(self):
         receipt = exchange.receive(self.b, self.base)['receipt']
         path = self.b.root / receipt['path']

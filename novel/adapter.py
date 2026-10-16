@@ -35,6 +35,10 @@ class AdapterError(RuntimeError):
         self.reason = reason
 
 
+class AttemptAlreadyStarted(AdapterError):
+    """A duplicate invocation must not stop or rewrite the owning attempt."""
+
+
 def _child_environment() -> tuple[dict[str, str], list[str]]:
     env = dict(os.environ)
     removed = []
@@ -180,21 +184,16 @@ def _write_once(path: Path, text: str) -> None:
             raise ValueError(f"existing attempt input differs: {path.name}")
 
 
-def prepare(engine: Any, task_id: str) -> Path:
-    """Export exactly the selected book revision for a claimed task."""
-    task = engine.task(task_id)
-    if task["status"] != "running":
-        raise ValueError("prepare requires a running task; claim it first")
-    if hasattr(engine, "execution_preflight"):
-        engine.execution_preflight(task_id)
-    files = engine.files(task["book_id"], task["input_revision"])
+def prepare(engine: Any, task_id: str, *, expected_attempt: int | None = None) -> Path:
+    """Export fresh inputs for exactly one claimed execution attempt."""
+    task, files, documents = engine.execution_inputs(task_id, expected_attempt=expected_attempt)
     schema_path = Path(__file__).resolve().parent.parent / "schemas" / "result.schema.json"
     schema = schema_path.read_text(encoding="utf-8")
     json.loads(schema)
     packet = {
         "protocol_version": 1,
         "task": task,
-        "policies_and_methods": engine.control_documents() if hasattr(engine, "control_documents") else {},
+        "policies_and_methods": documents,
         "input_revision": task["input_revision"],
         "file_sha256": {name: _digest(content) for name, content in sorted(files.items())},
         "files": files,
@@ -299,33 +298,40 @@ def _stop_tree(process: subprocess.Popen[Any]) -> None:
         raise OSError("Windows process-tree termination could not be confirmed")
 
 
-def run(engine: Any, task_id: str, timeout: float = 300, executable: str = "codex") -> dict[str, Any]:
+def run(engine: Any, task_id: str, timeout: float = 300, executable: str = "codex", *, expected_attempt: int | None = None) -> dict[str, Any]:
     """Run at most once; stop durably on failure and never publish a result."""
+    from .engine import PeerEvidenceError
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be positive and finite")
     task = engine.task(task_id)
+    attempt = task["attempts"] + (1 if task["status"] == "queued" else 0)
+    if expected_attempt is not None and expected_attempt != attempt:
+        raise ValueError("Execution attempt was superseded before run")
     if task["status"] == "queued":
-        engine.claim(task_id)
+        engine.claim(task_id, expected_attempt=attempt)
         task = engine.task(task_id)
-    if task["status"] != "running":
-        raise ValueError("run requires a queued or running task")
-    if hasattr(engine, "execution_preflight"):
-        engine.execution_preflight(task_id)
+    if task["status"] != "running" or task["attempts"] != attempt:
+        raise ValueError("run requires the same queued or running attempt")
     directory: Path | None = None
     try:
-        directory = prepare(engine, task_id)
-        status = doctor(executable)
-        _event(directory, "preflight", doctor=status)
-        if not status["ready"]:
-            reason = "authorization" if not status["chatgpt_login"] else "tool_failure"
-            raise AdapterError(reason, "Codex preflight failed; inspect adapter-events.jsonl / novel doctor")
-        # Reusing the same claimed attempt must never start a second process.
+        directory = _task_directory(engine, task)
+        # Reserve before preparation/preflight so a duplicate cannot alter the
+        # owner's inputs, logs, stop state, or cumulative no-progress count.
         marker = directory / "execution-started.json"
         try:
             with marker.open("x", encoding="utf-8") as stream:
                 stream.write(_json({"task_id": task_id, "attempt": task["attempts"], "at": time.time()}))
         except FileExistsError:
-            raise AdapterError("no_progress", "this attempt already started; inspect it and explicitly recover before retrying")
+            raise AttemptAlreadyStarted("no_progress", "this attempt already started; inspect it and explicitly recover before retrying")
+        prepare(engine, task_id, expected_attempt=task["attempts"])
+        status = doctor(executable)
+        _event(directory, "preflight", doctor=status)
+        if not status["ready"]:
+            reason = "authorization" if not status["chatgpt_login"] else "tool_failure"
+            raise AdapterError(reason, "Codex preflight failed; inspect adapter-events.jsonl / novel doctor")
+        # Preflight can take time; a cancellation, newer version, policy change,
+        # or another stopped task must prevent launching a stale request.
+        engine.execution_inputs(task_id, expected_attempt=task["attempts"])
         output = directory / "result.json"
         if output.exists() or output.is_symlink():
             raise AdapterError("no_progress", "unexpected existing result; do not overwrite or repeat this attempt")
@@ -349,15 +355,21 @@ def run(engine: Any, task_id: str, timeout: float = 300, executable: str = "code
         with (directory / "stdout.jsonl").open("x", encoding="utf-8") as stdout, (directory / "stderr.log").open("x", encoding="utf-8") as stderr:
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=stdout, stderr=stderr,
                                        text=True, encoding="utf-8", errors="replace", env=env, **options)
-            _event(directory, "started", pid=process.pid, model=defaults["model"], timeout=timeout)
             try:
+                _event(directory, "started", pid=process.pid, model=defaults["model"], timeout=timeout)
                 process.communicate((directory / "prompt.md").read_text(encoding="utf-8"), timeout=timeout)
-            except (subprocess.TimeoutExpired, KeyboardInterrupt):
+            except (subprocess.TimeoutExpired, KeyboardInterrupt, OSError, ValueError) as failure:
                 try:
                     _stop_tree(process)
                 except (OSError, subprocess.SubprocessError) as exc:
-                    raise AdapterError("tool_failure", f"Codex timed out or was interrupted; process cleanup unconfirmed for PID {process.pid}: {type(exc).__name__}") from exc
-                raise AdapterError("tool_failure", "Codex execution interrupted or timed out; its process tree was stopped")
+                    raise AdapterError("tool_failure", f"Codex execution failed; process cleanup unconfirmed for PID {process.pid}: {type(exc).__name__}") from exc
+                raise AdapterError("tool_failure", f"Codex execution failed ({type(failure).__name__}); its process tree was stopped") from failure
+            finally:
+                if process.stdin is not None:
+                    try:
+                        process.stdin.close()
+                    except OSError:
+                        pass  # Preserve the original failure after process cleanup.
         _event(directory, "exited", returncode=process.returncode)
         if process.returncode != 0:
             error_text = (directory / "stderr.log").read_text(encoding="utf-8")[-8000:]
@@ -373,6 +385,14 @@ def run(engine: Any, task_id: str, timeout: float = 300, executable: str = "code
             raise AdapterError("no_progress", "this execution attempt was superseded; its result was not submitted")
         _event(directory, "validated", result_sha256=_digest(_json(result)))
         return result
+    except AttemptAlreadyStarted:
+        raise
+    except PeerEvidenceError:
+        # No process was launched. Release only this invocation's reservation;
+        # reconcile the retained peer evidence before retrying the same attempt.
+        if directory is not None:
+            (directory / "execution-started.json").unlink(missing_ok=True)
+        raise
     except (AdapterError, OSError, ValueError, KeyError) as exc:
         reason = exc.reason if isinstance(exc, AdapterError) else "tool_failure"
         detail = str(exc)
@@ -381,9 +401,30 @@ def run(engine: Any, task_id: str, timeout: float = 300, executable: str = "code
                 _event(directory, "blocked", reason=reason, detail=detail)
             except (OSError, ValueError):
                 detail += "; adapter event log could not be written"
-        latest = engine.task(task_id)
-        if latest["attempts"] == task["attempts"] and latest["status"] == "running":
-            engine.block(task_id, reason, detail)
+        engine.block(task_id, reason, detail, expected_attempt=task["attempts"])
         if isinstance(exc, AdapterError):
             raise
+        raise AdapterError(reason, detail) from exc
+
+
+def run_and_submit(engine: Any, task_id: str, timeout: float = 300, executable: str = "codex") -> dict[str, Any]:
+    """Run once and submit; persist controller rejection without publishing."""
+    from .engine import NoProgressError
+
+    before = engine.task(task_id)
+    attempt = before["attempts"] + (1 if before["status"] == "queued" else 0)
+    result = run(engine, task_id, timeout=timeout, executable=executable, expected_attempt=attempt)
+    try:
+        return engine.submit(task_id, result, expected_attempt=attempt)
+    except (ValueError, OSError) as exc:
+        reason = "no_progress" if isinstance(exc, NoProgressError) else "tool_failure"
+        detail = f"Controller submission failed: {exc}"
+        directory = Path(engine.root) / "runtime" / "tasks" / task_id / f"attempt-{attempt}"
+        try:
+            _event(directory, "submission_failed", reason=reason, detail=detail)
+        except (OSError, ValueError):
+            detail += "; adapter event log could not be written"
+        # An older execution must never stop a newer attempt or a task which
+        # was already submitted, completed, cancelled, or explicitly stopped.
+        engine.block(task_id, reason, detail, expected_attempt=attempt)
         raise AdapterError(reason, detail) from exc

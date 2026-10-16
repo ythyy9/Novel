@@ -25,6 +25,14 @@ class EngineError(ValueError):
     pass
 
 
+class NoProgressError(EngineError):
+    """A valid candidate contains no effective change."""
+
+
+class PeerEvidenceError(EngineError):
+    """Peer reconciliation is required before executing this attempt."""
+
+
 def canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -384,6 +392,25 @@ class Engine:
             raise EngineError("The input version is no longer accepted; use a fresh revision task")
         return self._read_snapshot(task["book_id"], task["input_revision"])
 
+    def execution_inputs(self, task_id, *, expected_attempt=None):
+        """Read one running attempt and reject stale inputs before execution."""
+        with self._db(True) as db:
+            task = self._row(db, "tasks", task_id)
+            if task["status"] != "running":
+                raise EngineError("Execution requires a running task; claim it first")
+            if expected_attempt is not None and task["attempts"] != expected_attempt:
+                raise EngineError("Execution attempt was superseded")
+            files = self._fresh(db, task)
+            from .exchange import guard_claim
+            try:
+                guard_claim(self, db, task)
+            except EngineError as exc:
+                raise PeerEvidenceError(str(exc)) from exc
+            documents = self.control_documents()
+            if task["control_hash"] != self._controls():
+                raise EngineError("Policies or methods changed while preparing execution")
+        return task, files, documents
+
     @staticmethod
     def _not_stopped(db, book_id, except_task=None):
         stopped = db.execute("SELECT id FROM tasks WHERE book_id=? AND status IN ('blocked','exhausted') AND id!=?",
@@ -391,11 +418,13 @@ class Engine:
         if stopped:
             raise EngineError(f"Book has a stopped task {stopped[0]}; explicitly resolve or cancel it first")
 
-    def claim(self, task_id):
+    def claim(self, task_id, *, expected_attempt=None):
         with self._db(True) as db:
             task = self._row(db, "tasks", task_id)
             if task["status"] != "queued":
                 raise EngineError("Only queued tasks can be claimed")
+            if expected_attempt is not None and task["attempts"] + 1 != expected_attempt:
+                raise EngineError("Execution attempt was superseded before claim")
             self._fresh(db, task)
             from .exchange import guard_claim
             guard_claim(self, db, task)
@@ -406,13 +435,7 @@ class Engine:
         return self.task(task_id)
 
     def execution_preflight(self, task_id):
-        with self._db(True) as db:
-            task = self._row(db, "tasks", task_id)
-            if task["status"] != "running":
-                raise EngineError("Execution preflight requires a running task")
-            self._fresh(db, task)
-            from .exchange import guard_claim
-            guard_claim(self, db, task)
+        self.execution_inputs(task_id)
 
     def submit(self, task_id, result, *, expected_attempt=None):
         if expected_attempt is not None and (type(expected_attempt) is not int or expected_attempt < 1):
@@ -434,7 +457,7 @@ class Engine:
             validate_result(result, task, files)
             self._check_changes(files, result)
             if task["kind"] != "review" and not any(files.get(c["path"]) != c["content"] for c in result["changes"]):
-                raise EngineError("No effective change; record no_progress instead of publishing")
+                raise NoProgressError("No effective change; record no_progress instead of publishing")
             self._check_adoption(files, result)
             db.execute("UPDATE tasks SET result=?,result_hash=?,status='submitted',updated_at=? WHERE id=?", (encoded, digest(encoded), now(), task_id))
             self._event(db, "task.submitted", {"result_hash": digest(encoded)}, task_id, task["book_id"])
@@ -586,11 +609,16 @@ class Engine:
             self._event(db, "revision.accepted", assessment, book_id=book_id)
         return self.book(book_id)
 
-    def block(self, task_id, reason, detail):
+    def block(self, task_id, reason, detail, *, expected_attempt=None):
+        """Stop explicitly, or stop only the still-running owned attempt."""
         if reason not in STOP_REASONS or not isinstance(detail, str) or not detail.strip():
             raise EngineError("Valid stop reason and explanation required")
         with self._db(True) as db:
             task = self._row(db, "tasks", task_id)
+            if expected_attempt is not None and (
+                task["attempts"] != expected_attempt or task["status"] != "running"
+            ):
+                return self.task(task_id)
             if task["status"] not in ("queued", "running", "blocked"):
                 raise EngineError("Task cannot be blocked in its current state")
             no_progress = task["no_progress"] + (1 if reason == "no_progress" else 0)

@@ -273,11 +273,8 @@ def execute(args):
         from .adapter import prepare
         return {"packet_directory": str(prepare(engine, args.task))}
     if cmd == "task-run":
-        from .adapter import run
-        before = engine.task(args.task)
-        expected_attempt = before["attempts"] + (1 if before["status"] == "queued" else 0)
-        result = run(engine, args.task, timeout=args.timeout)
-        return engine.submit(args.task, result, expected_attempt=expected_attempt)
+        from .adapter import run_and_submit
+        return run_and_submit(engine, args.task, timeout=args.timeout)
     if cmd == "task-stop":
         return engine.block(args.task, args.reason, args.note)
     if cmd in ("task-resume", "task-recover", "task-cancel"):
