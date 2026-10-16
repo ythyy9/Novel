@@ -249,3 +249,17 @@ open("/run/codex-environment/codex-home/installation_id", O_RDWR|O_CREAT|O_LARGE
 实际命令：`python -m unittest discover -s tests -p test_feedback.py -v` exit=0，5项通过/0.498秒；全量 `python -m unittest discover -s tests -v` exit=0，152项/150通过/2 Windows专属跳过，14.262秒。日志 `.local-validation/windows-feedback-encoding/{targeted,full}.log`；`git diff --check` exit=0。新提交Windows/Linux CI待推送后独立回读，不以本机Linux结果代替。
 
 累计保留：既有工程失败4次/夹具返修4次、修复前回归失败1次（5子场景）、补丁上下文失败2次、模型/初始化/doctor失败原值不变。本轮另登记上述1个已核实Windows CI失败job及1次编码修复；其他失败job未自行推定次数。父线程两次继续调用UNKNOWN且未产生新turn，作为调度异常2次单列，不当作开发执行或清零重试。嵌套调用仍暂停。后续先核对CI，再实现离线交接协议，不连接未授权存储或上传作品。
+
+## 离线双向交接第一阶段与CI回读（2026-10-16）
+
+编码修复提交 `c1dfba0803763641abbe6b07c9d993ae63b8f05f` 的真实PR CI run 38845506294 已通过连接器独立回读：Ubuntu3.13/job116794992671、Windows3.13/job116794992902、Windows3.11/job116794992922、Ubuntu3.11/job116794992976全部completed/success。原Draft PR正文已追加该证据，未修改Draft/base。没有手动重跑失败旧提交。
+
+后续实现范围为已评估的最小本地协议：bundle-create生成显式选择的包；bundle-check比较可信共同基线/当前状态；bundle-receive仅保存runtime/exchange/inbox中的独立副本并返回接收回执。任务ID、输入/输出/当前版本、累计停止、关联作品原反馈从控制器读取；产物按显式路径保存内容及哈希。验证声明、未决项、下一步与排除项单列；不会把自述验证当真实测试。源码摘要统一换行避免跨平台假分叉。
+
+开工预检区分same_selected_state/unknown_baseline/incoming_ahead/local_ahead/diverged，并列出已完成任务和停止条件。基线须显式提供完整包验证，不信任来包自述；相同包幂等，同来源/操作ID内容变化拒绝。没有自动合并、活动数据库导入、实时传输或task-claim自动门禁，操作员须在开工前检查；peer_latest_known恒为false，不能宣称离线对端没有新工作。完整使用及边界见docs/offline-exchange.md。
+
+实际验证，日志 `.local-validation/offline-exchange/`：定向 `python -m unittest discover -s tests -p test_exchange.py -v` exit=0，5项/0.620秒（targeted.log）；首次全量exit=0，158项/156通过/2 Windows跳过，15.962秒（full.log）。差异审查后补充畸形任务检查，再全量同命令exit=0，159项/157通过/2 Windows跳过，14.691秒（final.log）。CLI子进程及两个独立合成目录覆盖双向回传预检、断开来源后的副本读取、拒绝分叉覆盖、原话/已完成/停止次数可见、重复包、同ID异内容、错误基线、损坏内容、非法路径、缺产物和源捕获变化。`git diff --check` exit=0。
+
+没有访问用户电脑或建立传输连接，没有将第一版章节、第二版、原作或其他真实资料打包/上传；只用自动测试合成资料。第一版仍为历史输入，第二版及依据待提供。真实跨端传输需目的地和资料范围授权；活动接续/自动开工门禁是后续独立任务，不能把本阶段只读预检当作自动阻止所有重复工作。
+
+累计本阶段非预期测试失败0。此前Windows失败job1/编码修复1、工程失败4/夹具返修4、预期修复前回归失败1、补丁上下文失败2、调度UNKNOWN2及模型/初始化/doctor记录保持。没有重置次数，没有嵌套模型调用。新交接提交的跨平台CI待推送后回读；上述四组success仅归属c1dfba0。

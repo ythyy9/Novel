@@ -87,6 +87,14 @@ def parser():
     diagnose = sub.add_parser("feedback-diagnose", help="追加原因假设、预防计划及实际验证记录，不自动修改方法")
     diagnose.add_argument("feedback")
     diagnose.add_argument("spec", type=Path)
+    bundle = sub.add_parser("bundle-create", help="生成本地离线包，不传输或发布")
+    bundle.add_argument("spec", type=Path)
+    bundle.add_argument("output", type=Path)
+    bundle.add_argument("--baseline", type=Path)
+    for name in ("bundle-check", "bundle-receive"):
+        bundle = sub.add_parser(name, help="校验离线交接；接收仅保存独立副本，不覆盖当前资料")
+        bundle.add_argument("package", type=Path)
+        bundle.add_argument("--baseline", type=Path)
     sub.add_parser("audit")
     experiment = sub.add_parser("eval-create")
     experiment.add_argument("spec", type=Path)
@@ -127,6 +135,14 @@ def execute(args):
                                     args.rationale_file.read_text(encoding="utf-8-sig"), args.reviewer)
         if cmd == "eval-decide":
             return evaluation.decide(engine.root, args.experiment, args.action, args.note)
+    if cmd.startswith("bundle-"):
+        from . import exchange
+        if cmd == "bundle-create":
+            return exchange.create(engine, _json(args.spec.read_text(encoding="utf-8-sig"), "handoff spec"),
+                                   args.output, args.baseline)
+        if cmd == "bundle-check":
+            return exchange.check(engine, args.package, args.baseline)
+        return exchange.receive(engine, args.package, args.baseline)
     if cmd == "book-create":
         return engine.create_book(args.book, args.title)
     if cmd == "books":

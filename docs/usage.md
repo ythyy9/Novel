@@ -207,3 +207,5 @@ python -m novel excerpt BOOK manuscript/001.md --revision REVISION --start-line 
 模型结果没有作者决定、原始参考导入、反馈录入、阶段通过或规则修改的权限字段；操作员命令承载这些动作。这个区分是可检查的控制器协议与执行流程，不是人类身份认证或完整操作系统权限隔离。使用者必须具有相应作者授权。
 
 反馈后的原因调查与预防验证使用 `feedback-diagnose FEEDBACK_ID SPEC.json` 追加，`feedback-show FEEDBACK_ID` 回读。证据字段、旧版反馈、对照关联及不自动提升方法的边界见 [反馈闭环](feedback-loop.md)。
+
+离线双向交接：`bundle-create` 生成显式选择的本地包，`bundle-check` 比较共同基线和当前状态，`bundle-receive` 只保留独立副本及返回回执，不导入活动数据库。它不是实时同步或自动开工门禁；范围、预检状态、授权传输边界及完整示例见 [离线交接](offline-exchange.md)。

@@ -162,6 +162,22 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.json_command("audit")["snapshots_verified"], 2)
         self.assertEqual(len(self.json_command("tasks", "--book", "cli-book")), 2)
 
+    def test_offline_bundle_cli_receives_copy_without_changing_task(self):
+        task = self.create_task()
+        spec = self.json_file("handoff-spec.json", {
+            "origin": "cloud", "operation_id": "cli-handoff", "task_ids": [task["id"]],
+            "artifacts": [], "verification": "合成接口验证", "unresolved": ["未同步实际作品"],
+            "next_step": "核对另一端任务", "excluded": ["未选择的全部资料"]})
+        output = self.root / "package.json"
+        created = self.json_command("bundle-create", spec, output)
+        self.assertEqual(created["status"], "created_not_transferred")
+        report = self.json_command("bundle-check", output)
+        self.assertEqual(report["status"], "same_selected_state")
+        received = self.json_command("bundle-receive", output)
+        self.assertEqual(received["receipt"]["bundle_id"], created["id"])
+        self.assertFalse(received["preflight"]["live_import_performed"])
+        self.assertEqual(self.json_command("task-show", task["id"])["status"], "queued")
+
     def test_feedback_diagnosis_cli_preserves_historical_input(self):
         revision = self.json_command("book-show", "cli-book")["current_revision"]
         note = self.text_file("feedback-original.txt", "合成反馈：证据不足，先查原因。\n")
