@@ -155,7 +155,7 @@ python -m novel feedback $bookId --text-file 'C:\path\reader-feedback.txt' --sou
 python -m novel audit
 ```
 
-搜索是当前作品版本的逐行、不区分大小写文本检索，不是语义检索。反馈保留原文、来源和当时版本，不自动改正文，也不能把 Agent 自评录成作者或目标读者反馈。`audit` 检查 SQLite、登记快照、版本关联、结果哈希和审核证据一致性，不评判小说质量。
+搜索是当前作品版本的逐行、不区分大小写文本检索，不是语义检索。反馈保留原文、来源和当时版本；迟到反馈可用 `--revision REV` 指定实际阅读版本，不自动改正文，也不能把 Agent 自评录成作者或目标读者反馈。`audit` 检查 SQLite、登记快照、版本关联、结果哈希和审核证据一致性，不评判小说质量。
 
 需要回到旧内容时，先完成或取消活动任务，再执行：
 
@@ -205,3 +205,5 @@ python -m novel excerpt BOOK manuscript/001.md --revision REVISION --start-line 
 本仓库的 `.gitignore` 忽略 `books/`、`runtime/`、本地验收目录和常见凭据文件，因此提交代码不会自动备份私有作品或模型日志。`policies/`、`methods/` 可被 Git 跟踪，勿在其中放凭据或不准备提交的私密原文。改用外部 `--root` 时，资料目录的 Git 规则由那个目录自行管理。
 
 模型结果没有作者决定、原始参考导入、反馈录入、阶段通过或规则修改的权限字段；操作员命令承载这些动作。这个区分是可检查的控制器协议与执行流程，不是人类身份认证或完整操作系统权限隔离。使用者必须具有相应作者授权。
+
+反馈后的原因调查与预防验证使用 `feedback-diagnose FEEDBACK_ID SPEC.json` 追加，`feedback-show FEEDBACK_ID` 回读。证据字段、旧版反馈、对照关联及不自动提升方法的边界见 [反馈闭环](feedback-loop.md)。

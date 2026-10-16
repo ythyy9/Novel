@@ -162,6 +162,20 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.json_command("audit")["snapshots_verified"], 2)
         self.assertEqual(len(self.json_command("tasks", "--book", "cli-book")), 2)
 
+    def test_feedback_diagnosis_cli_preserves_historical_input(self):
+        revision = self.json_command("book-show", "cli-book")["current_revision"]
+        note = self.text_file("feedback-original.txt", "合成反馈：证据不足，先查原因。\n")
+        original = self.json_command("feedback", "cli-book", "--text-file", note, "--revision", revision)
+        spec = self.json_file("diagnosis.json", {
+            "evidence": [], "hypothesis": "资料缺失，原因未知。", "prevention": "先列可见依据。",
+            "scope": "合成接口验证", "validation_plan": "补齐资料后检验其他案例及误报。",
+            "actual_result": None, "experiment_id": None})
+        added = self.json_command("feedback-diagnose", original["id"], spec)
+        result = self.json_command("feedback-show", original["id"])
+        self.assertEqual(result["feedback"]["text"], note.read_text(encoding="utf-8"))
+        self.assertEqual(result["feedback"]["revision"], revision)
+        self.assertEqual(result["diagnoses"], [added])
+
     def test_external_submission_requires_and_binds_attempt(self):
         task = self.create_task()
         self.json_command("task-claim", task["id"])

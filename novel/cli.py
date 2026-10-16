@@ -82,6 +82,11 @@ def parser():
         command.add_argument("--text-file", type=Path, required=True)
         if name == "feedback":
             command.add_argument("--source", choices=("author", "target_reader"), default="author")
+            command.add_argument("--revision", help="反馈对应的实际阅读版本，默认当前版本")
+    sub.add_parser("feedback-show").add_argument("feedback")
+    diagnose = sub.add_parser("feedback-diagnose", help="追加原因假设、预防计划及实际验证记录，不自动修改方法")
+    diagnose.add_argument("feedback")
+    diagnose.add_argument("spec", type=Path)
     sub.add_parser("audit")
     experiment = sub.add_parser("eval-create")
     experiment.add_argument("spec", type=Path)
@@ -184,8 +189,13 @@ def execute(args):
         return engine.rollback(args.book, args.revision, args.note)
     if cmd == "decision":
         return engine.decision(args.book, args.text_file.read_text(encoding="utf-8-sig"))
+    if cmd in ("feedback-diagnose", "feedback-show"):
+        from . import feedback
+        if cmd == "feedback-show":
+            return feedback.show(engine, args.feedback)
+        return feedback.append(engine, args.feedback, _json(args.spec.read_text(encoding="utf-8-sig"), "feedback diagnosis"))
     if cmd == "feedback":
-        return engine.feedback(args.book, args.text_file.read_text(encoding="utf-8-sig"), args.source)
+        return engine.feedback(args.book, args.text_file.read_text(encoding="utf-8-sig"), args.source, args.revision)
     if cmd == "reference-import":
         return engine.reference(args.book, args.text_file.read_text(encoding="utf-8-sig"))
     if cmd == "audit":

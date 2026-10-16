@@ -735,15 +735,20 @@ class Engine:
                 "research": research, "reviews": reviews,
                 "scope": "explicit state citations, declared research impact and same-revision review coverage; not acceptance or semantic proof"}
 
-    def feedback(self, book_id, text, source="author"):
+    def feedback(self, book_id, text, source="author", revision=None):
         if source not in ("author", "target_reader") or not text.strip():
             raise EngineError("Feedback needs exact text and author/target_reader source")
         with self._db(True) as db:
             book = self._row(db, "books", book_id)
+            revision = revision or book["current_revision"]
+            version = self._row(db, "revisions", revision)
+            if version["book_id"] != book_id:
+                raise EngineError("Feedback revision belongs to another book")
+            self._read_snapshot(book_id, revision)
             feedback_id = uuid.uuid4().hex
-            db.execute("INSERT INTO feedback VALUES (?,?,?,?,?,?)", (feedback_id, book_id, book["current_revision"], source, text, now()))
+            db.execute("INSERT INTO feedback VALUES (?,?,?,?,?,?)", (feedback_id, book_id, revision, source, text, now()))
             self._event(db, "feedback.recorded", {"feedback_id": feedback_id, "source": source}, book_id=book_id)
-        return {"id": feedback_id, "revision": book["current_revision"], "source": source, "text": text}
+        return {"id": feedback_id, "revision": revision, "source": source, "text": text}
 
     def decision(self, book_id, text):
         """Trusted operator ingress, not exposed in the model result protocol.
