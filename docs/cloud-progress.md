@@ -239,3 +239,13 @@ open("/run/codex-environment/codex-home/installation_id", O_RDWR|O_CREAT|O_LARGE
 本轮仅完成输入接收和缺口登记。现有反馈CLI需要确认的作品/版本绑定，故暂存未绑定接收记录，未伪造已运行 feedback-diagnose。按随后指示暂停真实命名问题的新诊断，不把已处理问题登记为待修，不对总体模型偏好或内部成因作结论。下一步等待第二版和本地修改依据/相关生成上下文，再比较具体变化、假设与预防验证；引用原作还需相应完整材料。
 
 存储/元数据回读和忽略检查均exit=0；仅数据接收与文档更新，产品源码未变，不重复152项回归。既有累计失败/停止次数全部保持，未启动嵌套调用或恢复任务。此次第一版输入补齐不等于第二版、生成上下文或原作已到位。
+
+## Windows反馈回归编码修复（2026-10-16）
+
+起点 fc22ce28b64d483ef84932bfdd06357856fddae5，工作区干净。通过现有 GitHub 连接器实际读取 run 38836922296/job 116768009649 日志：Windows Python 3.13.16，test_feedback.py:102 默认 read_text 使用 cp1252 读取 UTF-8 JSON，UnicodeDecodeError（byte 0x90，position 424），152项中1错误，exit=1。此前Linux通过不能代表Windows通过。
+
+修复测试中的读写均显式encoding=utf-8，篡改后的JSON保留中文（ensure_ascii=False）。全部篡改/串用拒绝断言保留；不跳过测试、不设置全局UTF-8环境变量、不改生产协议。
+
+实际命令：`python -m unittest discover -s tests -p test_feedback.py -v` exit=0，5项通过/0.498秒；全量 `python -m unittest discover -s tests -v` exit=0，152项/150通过/2 Windows专属跳过，14.262秒。日志 `.local-validation/windows-feedback-encoding/{targeted,full}.log`；`git diff --check` exit=0。新提交Windows/Linux CI待推送后独立回读，不以本机Linux结果代替。
+
+累计保留：既有工程失败4次/夹具返修4次、修复前回归失败1次（5子场景）、补丁上下文失败2次、模型/初始化/doctor失败原值不变。本轮另登记上述1个已核实Windows CI失败job及1次编码修复；其他失败job未自行推定次数。父线程两次继续调用UNKNOWN且未产生新turn，作为调度异常2次单列，不当作开发执行或清零重试。嵌套调用仍暂停。后续先核对CI，再实现离线交接协议，不连接未授权存储或上传作品。

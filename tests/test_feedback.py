@@ -99,9 +99,9 @@ class FeedbackTests(unittest.TestCase):
     def test_tampering_and_cross_feedback_copy_rejected(self):
         note = feedback.append(self.engine, self.original["id"], self.spec)
         path = self.engine.root / f"runtime/feedback/{self.original['id']}/{note['id']}.json"
-        envelope = json.loads(path.read_text())
+        envelope = json.loads(path.read_text(encoding="utf-8"))
         envelope["record"]["spec"]["hypothesis"] = "伪造确定原因"
-        path.write_text(json.dumps(envelope))
+        path.write_text(json.dumps(envelope, ensure_ascii=False), encoding="utf-8")
         with self.assertRaises(EngineError):
             feedback.show(self.engine, self.original["id"])
         path.unlink()
