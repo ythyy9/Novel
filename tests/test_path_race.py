@@ -79,8 +79,72 @@ class PathRaceTests(unittest.TestCase):
         with patch.object(Path, 'lstat', linked_parent), self.assertRaises(EngineError):
             checked_path(self.root, 'runtime/missing.txt')
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows directory rename contention')
+    def test_transient_snapshot_rename_preserves_complete_publication(self):
+        original = Path.rename
+        attempts = []
+        def rename(path, target):
+            attempts.append(path)
+            if len(attempts) == 1:
+                raise PermissionError('temporary snapshot contention')
+            return original(path, target)
+        opened = Engine(self.root)
+        with patch.object(Path, 'rename', rename):
+            opened.create_book('fixture', 'Fixture')
+        self.assertEqual(len(attempts), 2)
+        self.assertIn('canon/state.json', opened.files('fixture'))
+        self.assertEqual(opened.audit()['database'], 'ok')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows directory rename contention')
+    def test_permanent_snapshot_rename_error_does_not_publish(self):
+        opened = Engine(self.root)
+        with patch.object(Path, 'rename', side_effect=PermissionError('permanent denial')) as rename:
+            with self.assertRaises(PermissionError):
+                opened.create_book('fixture', 'Fixture')
+        self.assertEqual(rename.call_count, 4)
+        self.assertEqual(opened.list_books(), [])
+        self.assertEqual(opened.audit()['database'], 'ok')
+
 
 class WindowsResolutionTests(unittest.TestCase):
+    def deleted_probe(self, *, persistent=False, next_error=None):
+        from novel import engine
+        root = PureWindowsPath('D:/work/Novel')
+        self.deleted_resolutions = []
+        class WindowsFixture(PureWindowsPath):
+            def lstat(path):
+                if self.deleted_resolutions and path != root and next_error:
+                    if next_error == 'reparse':
+                        return SimpleNamespace(st_mode=stat.S_IFLNK | 0o777)
+                    raise next_error
+                return SimpleNamespace(st_mode=stat.S_IFREG | 0o600)
+            def resolve(path):
+                if path == root:
+                    return str(root)
+                self.deleted_resolutions.append(path)
+                if persistent or len(self.deleted_resolutions) == 1:
+                    return 'D:/$Extend/$Deleted/01A90000000002C00C1EE64D'
+                return str(path)
+        with patch.object(engine, 'os', SimpleNamespace(name='nt')), patch.object(engine, 'Path', PureWindowsPath):
+            return checked_path(WindowsFixture(str(root)), 'runtime/novel.sqlite3-wal')
+
+    def test_deleted_sidecar_resolution_is_rechecked(self):
+        self.assertEqual(self.deleted_probe(), PureWindowsPath('D:/work/Novel/runtime/novel.sqlite3-wal'))
+        self.assertEqual(len(self.deleted_resolutions), 2)
+
+    def test_persistent_deleted_resolution_still_rejected(self):
+        with self.assertRaisesRegex(EngineError, 'Path escapes project'):
+            self.deleted_probe(persistent=True)
+        self.assertLessEqual(len(self.deleted_resolutions), 4)
+
+    def test_reparse_after_deleted_resolution_is_rejected(self):
+        with self.assertRaisesRegex(EngineError, 'Reparse points'):
+            self.deleted_probe(next_error='reparse')
+
+    def test_permission_error_after_deleted_resolution_is_not_ignored(self):
+        with self.assertRaises(PermissionError):
+            self.deleted_probe(next_error=PermissionError('denied'))
+
     def check_resolved(self, root_text, child_text):
         from novel import engine
         root = PureWindowsPath(root_text)

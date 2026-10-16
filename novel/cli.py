@@ -49,6 +49,7 @@ def parser():
     create = sub.add_parser("task-create")
     create.add_argument("book")
     create.add_argument("kind", choices=sorted(KINDS))
+    create.add_argument("--reference", action="append", default=[], help="先检查并分析参考资料库，再把报告绑定到任务输入")
     source = create.add_mutually_exclusive_group(required=True)
     source.add_argument("--instruction")
     source.add_argument("--instruction-file", type=Path)
@@ -113,6 +114,31 @@ def parser():
     ack.add_argument("receipt", type=Path)
     ack.add_argument("agreement", type=Path)
     sub.add_parser("audit")
+    ref = sub.add_parser("reference-add", help="导入参考书并自动查全系列、获取、完整阅读分析；原文件保留")
+    ref.add_argument("reference")
+    ref.add_argument("--file", type=Path, required=True)
+    ref.add_argument("--original-file", type=Path, help="转换前原件；与可读文件分别保留")
+    ref.add_argument("--title", required=True)
+    ref.add_argument("--author", required=True)
+    ref.add_argument("--work-id")
+    ref.add_argument("--language", default="unknown")
+    ref.add_argument("--kind", choices=("volume", "extra", "appendix", "standalone"), default="volume")
+    ref.add_argument("--offline", action="store_true", help="仅保存和结构检查；联网及阅读保持待完成")
+    ref.add_argument("--book", help="将带缺口的分析报告追加到作品参考资料，并绑定后续使用")
+    use = sub.add_parser("reference-use", help="重新检查系列更新，接续全部实有内容的分析")
+    use.add_argument("reference")
+    use.add_argument("--book")
+    use.add_argument("--resume-note", help="明确接续先前失败；保留累计尝试次数，不自动循环重试")
+    for command in (ref, use):
+        command.add_argument("--max-calls", type=int, default=24)
+        command.add_argument("--timeout", type=float, default=600)
+    sub.add_parser("reference-status", help="只读报告书目、版本、阅读覆盖和缺口").add_argument("reference")
+    allow = sub.add_parser("reference-allow-source", help="登记已核实可获取的精确 URL；模型不能自行授权")
+    allow.add_argument("reference")
+    allow.add_argument("url")
+    allow.add_argument("--basis", choices=("author_publication", "open_license", "owned_access"), required=True)
+    allow.add_argument("--evidence-url", required=True)
+    allow.add_argument("--note", required=True)
     experiment = sub.add_parser("eval-create")
     experiment.add_argument("spec", type=Path)
     for name in ("eval-blind", "eval-summary"):
@@ -139,6 +165,27 @@ def execute(args):
         return {"initialized": str(args.root.resolve()), "model_called": False}
     engine = Engine(args.root)
     cmd = args.command
+    if cmd in ("reference-add", "reference-use", "reference-status", "reference-allow-source"):
+        from .references import ReferenceLibrary
+        library = ReferenceLibrary(engine.root, args.reference)
+        if cmd == "reference-status":
+            return library.status()
+        if cmd == "reference-allow-source":
+            return library.allow_source(args.url, args.basis, args.evidence_url, args.note)
+        if args.book:
+            engine.book(args.book)
+            if any(t["status"] in ("running", "submitted") for t in engine.tasks(args.book)):
+                raise ValueError("Finish or cancel executing tasks before binding references")
+        if cmd == "reference-add":
+            result = library.add(args.file, args.title, args.author, work_id=args.work_id,
+                                 language=args.language, kind=args.kind, original=args.original_file)
+            if not args.offline:
+                result = library.run(max_calls=args.max_calls, timeout=args.timeout)
+        else:
+            result = library.run(max_calls=args.max_calls, timeout=args.timeout, resume_note=args.resume_note)
+        if args.book:
+            result["binding"] = library.bind(engine, args.book)
+        return result
     if cmd.startswith("eval-"):
         from . import evaluation
         if cmd == "eval-create":
@@ -196,6 +243,19 @@ def execute(args):
     if cmd == "excerpt":
         return engine.excerpt(args.book, args.path, args.revision, args.start_line, args.line_count)
     if cmd == "task-create":
+        from .references import ReferenceLibrary, refresh_bound
+        if args.reference and any(t["status"] in ("running", "submitted") for t in engine.tasks(args.book)):
+            raise ValueError("Finish or cancel executing tasks before refreshing references")
+        refreshed = refresh_bound(engine, args.book)
+        bound_ids = {r["id"] for r in refreshed}
+        remaining_calls = max(0, 24 - sum(r.get("last_run", {}).get("model_calls", 0) for r in refreshed))
+        for ref_id in args.reference:
+            if ref_id not in bound_ids:
+                library = ReferenceLibrary(engine.root, ref_id)
+                result = library.run(max_calls=remaining_calls)
+                remaining_calls -= result.get("last_run", {}).get("model_calls", 0)
+                library.bind(engine, args.book)
+                bound_ids.add(ref_id)
         instruction = args.instruction if args.instruction is not None else args.instruction_file.read_text(encoding="utf-8-sig")
         return engine.enqueue(args.book, args.kind, instruction)
     if cmd == "tasks":

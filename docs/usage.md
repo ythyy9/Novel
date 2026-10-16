@@ -4,7 +4,7 @@
 
 ## 启动与资料目录
 
-控制器使用 Python 3.11 或更新版本的标准库，没有第三方 Python 依赖。从源码仓库根目录运行，不需要 `pip install`。只有 `task-run` 需要另外安装 Codex CLI 并具备可用的 ChatGPT 登录；不要为运行本系统配置付费 API key。
+控制器及 EPUB/TXT 参考处理使用 Python 3.11 或更新版本的标准库。从源码仓库根目录运行，不需要 `pip install`；参考 PDF 抽取可选依赖 `pypdf`。`task-run`、参考书联网阅读流程及创建绑定参考资料的任务需要 Codex CLI 和可用的 ChatGPT 登录；不要为运行本系统配置付费 API key。
 
 ```powershell
 Set-Location F:\Novel
@@ -39,6 +39,8 @@ python -m novel files $bookId
 ```
 
 `decision` 保存作者原话和明确授权的决定；`reference-import` 保存作者指定、可使用的参考材料原文。二者各自生成追加记录，并创建新版本。参考材料不会自动成为新作事实。不要把 Agent 的建议用 `decision` 冒充作者决定。
+
+整本参考书使用 [`reference-add` 自动流程](reference-library.md)，会检查整个系列、番外和附录并分析全部实有内容。`reference-use --book <作品ID>` 把来源及缺口报告绑定到作品；之后 CLI 创建任务前会检查更新。找不到全文时继续已有分析，不以节选冒充完整；`reference-status` 可只读查看覆盖和缺口。
 
 录入决定或参考材料前，应完成或取消该书的 `running`、`submitted` 任务。导入会改变输入版本：若原任务正在等待作者决定，应先保留交接信息，录入真实决定，再取消已经过期的原任务，基于新版本创建接续任务。不要反复恢复旧版本任务。
 

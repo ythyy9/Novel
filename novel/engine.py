@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import sqlite3
 import stat
+import time
 import uuid
 
 from .records import ValidationError, validate_path, validate_result
@@ -46,6 +47,10 @@ def identifier(value):
 
 def checked_path(root: Path, relative: str) -> Path:
     """Reject junctions/symlinks as well as lexical escapes, on every access."""
+    return _checked_path(root, relative, deleted_rechecks=3)
+
+
+def _checked_path(root: Path, relative: str, deleted_rechecks: int) -> Path:
     if not relative or "\\" in relative or ":" in relative:
         raise EngineError("Unsafe local path")
     parts = relative.split("/")
@@ -80,6 +85,13 @@ def checked_path(root: Path, relative: str) -> Path:
     resolved_path = comparison_path(path)
     resolved_root = comparison_path(root)
     if not resolved_path.is_relative_to(resolved_root):
+        # A concurrently removed SQLite sidecar can resolve through its still
+        # open NTFS handle to $Extend/$Deleted. Recheck the original path with
+        # every lexical, lstat/reparse and containment check intact; never
+        # accept or normalize the tombstone itself as a project path.
+        if (os.name == "nt" and deleted_rechecks
+                and tuple(p.casefold() for p in resolved_path.parts[1:3]) == ("$extend", "$deleted")):
+            return _checked_path(root, relative, deleted_rechecks - 1)
         raise EngineError(
             f"Path escapes project: path={str(path)!r}, root={str(root)!r}, "
             f"resolved_path={str(resolved_path)!r}, resolved_root={str(resolved_root)!r}")
@@ -262,7 +274,16 @@ class Engine:
         for relative, content in files.items():
             self._new_file(checked_path(staging, relative), content)
         self._new_file(staging / "manifest.json", canonical(manifest) + "\n")
-        staging.rename(base)
+        for attempt in range(4):
+            try:
+                checked_path(self.root, staging.relative_to(self.root).as_posix())
+                checked_path(self.root, base.relative_to(self.root).as_posix())
+                staging.rename(base)
+                break
+            except PermissionError:
+                if os.name != "nt" or attempt == 3:
+                    raise
+                time.sleep(0.05 * (2 ** attempt))
         return revision
 
     def _read_snapshot(self, book_id, revision):
