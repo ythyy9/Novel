@@ -209,3 +209,5 @@ python -m novel excerpt BOOK manuscript/001.md --revision REVISION --start-line 
 反馈后的原因调查与预防验证使用 `feedback-diagnose FEEDBACK_ID SPEC.json` 追加，`feedback-show FEEDBACK_ID` 回读。证据字段、旧版反馈、对照关联及不自动提升方法的边界见 [反馈闭环](feedback-loop.md)。
 
 离线双向交接：`bundle-create` 生成显式选择的本地包，`bundle-check` 比较共同基线和当前状态，`bundle-receive` 只保留独立副本及返回回执，不导入活动数据库。它不是实时同步；任务认领及执行准备会检查已接收包，范围、预检状态、授权传输边界及完整示例见 [离线交接](offline-exchange.md)。
+
+`bundle-apply` 仅将明确基线和目标的单个已完成写作/返修接续为draft；必须先接收v2包且本地任务仍queued。它不替代receive、不合并冲突或接受作者决定，参数与恢复边界见离线交接文档。

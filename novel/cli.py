@@ -95,6 +95,12 @@ def parser():
         bundle = sub.add_parser(name, help="校验离线交接；接收仅保存独立副本，不覆盖当前资料")
         bundle.add_argument("package", type=Path)
         bundle.add_argument("--baseline", type=Path)
+    adoption = sub.add_parser("bundle-apply", help="显式接续单个完成的写作/返修为待审核版本，不合并冲突")
+    adoption.add_argument("package", type=Path)
+    adoption.add_argument("task")
+    adoption.add_argument("--baseline", type=Path, required=True)
+    adoption.add_argument("--expected-base", required=True)
+    adoption.add_argument("--expected-target", required=True)
     sub.add_parser("audit")
     experiment = sub.add_parser("eval-create")
     experiment.add_argument("spec", type=Path)
@@ -137,6 +143,9 @@ def execute(args):
             return evaluation.decide(engine.root, args.experiment, args.action, args.note)
     if cmd.startswith("bundle-"):
         from . import exchange
+        if cmd == "bundle-apply":
+            return exchange.apply(engine, args.package, args.task, args.baseline,
+                                  args.expected_base, args.expected_target)
         if cmd == "bundle-create":
             return exchange.create(engine, _json(args.spec.read_text(encoding="utf-8-sig"), "handoff spec"),
                                    args.output, args.baseline)

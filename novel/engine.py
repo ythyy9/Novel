@@ -476,26 +476,31 @@ class Engine:
                 return self.task(task_id)
             if task["status"] != "submitted":
                 raise EngineError("Submit a validated result before publishing")
-            files = self._fresh(db, task)
-            result = json.loads(task["result"])
-            if digest(canonical(result)) != task["result_hash"]:
-                raise EngineError("Stored result hash mismatch")
-            validate_result(result, task, files)
-            self._check_changes(files, result)
-            if task["kind"] == "review":
-                revision = task["input_revision"]
-                db.execute("INSERT INTO reviews VALUES (?,?,?,?)", (task_id, task["book_id"], revision, task["result"]))
-                # New evidence always reopens the stage, including an accepted version.
-                db.execute("UPDATE revisions SET status='draft' WHERE id=?", (revision,))
-            else:
-                self._check_adoption(files, result)
-                files.update({c["path"]: c["content"] for c in result["changes"]})
-                revision = self._snapshot(task["book_id"], files, task["input_revision"], task_id)
-                db.execute("INSERT INTO revisions VALUES (?,?,?,?,?,?)", (revision, task["book_id"], task["input_revision"], "draft", task_id, now()))
-                db.execute("UPDATE books SET current_revision=? WHERE id=?", (revision, task["book_id"]))
-            db.execute("UPDATE tasks SET status='completed',result_revision=?,updated_at=? WHERE id=?", (revision, now(), task_id))
-            self._event(db, "task.published", {"revision": revision}, task_id, task["book_id"])
+            self._publish_locked(db, task)
         return self.task(task_id)
+
+    def _publish_locked(self, db, task):
+        task_id = task["id"]
+        files = self._fresh(db, task)
+        result = json.loads(task["result"])
+        if digest(canonical(result)) != task["result_hash"]:
+            raise EngineError("Stored result hash mismatch")
+        validate_result(result, task, files)
+        self._check_changes(files, result)
+        if task["kind"] == "review":
+            revision = task["input_revision"]
+            db.execute("INSERT INTO reviews VALUES (?,?,?,?)", (task_id, task["book_id"], revision, task["result"]))
+            # New evidence always reopens the stage, including an accepted version.
+            db.execute("UPDATE revisions SET status='draft' WHERE id=?", (revision,))
+        else:
+            self._check_adoption(files, result)
+            files.update({c["path"]: c["content"] for c in result["changes"]})
+            revision = self._snapshot(task["book_id"], files, task["input_revision"], task_id)
+            db.execute("INSERT INTO revisions VALUES (?,?,?,?,?,?)", (revision, task["book_id"], task["input_revision"], "draft", task_id, now()))
+            db.execute("UPDATE books SET current_revision=? WHERE id=?", (revision, task["book_id"]))
+        db.execute("UPDATE tasks SET status='completed',result_revision=?,updated_at=? WHERE id=?", (revision, now(), task_id))
+        self._event(db, "task.published", {"revision": revision}, task_id, task["book_id"])
+        return revision
 
     def assessment(self, book_id):
         with self._db() as db:

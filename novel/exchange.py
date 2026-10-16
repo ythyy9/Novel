@@ -56,7 +56,7 @@ def _spec(spec):
 
 
 def _capture(engine, spec, *, required):
-    tasks, books, artifacts, feedback = {}, {}, {}, {}
+    tasks, books, artifacts, feedback, history = {}, {}, {}, {}, {}
     with engine._db() as db:
         for task_id in spec["task_ids"]:
             row = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
@@ -68,6 +68,8 @@ def _capture(engine, spec, *, required):
             # Handoff verifies snapshots and stored result hashes.
             tasks[task_id] = engine.handoff(task_id)
             books[row["book_id"]] = tasks[task_id]["current_revision"]
+            history[task_id] = [dict(event) for event in db.execute(
+                "SELECT * FROM events WHERE task_id=? ORDER BY id", (task_id,))]
         for book_id in books:
             feedback[book_id] = [dict(row) for row in db.execute(
                 "SELECT * FROM feedback WHERE book_id=? ORDER BY id", (book_id,))]
@@ -87,14 +89,15 @@ def _capture(engine, spec, *, required):
             if total_bytes > MAX_BYTES:
                 raise EngineError("Selected artifacts exceed bundle size limit")
             artifacts[relative] = data.decode("utf-8")
-    return {"tasks": tasks, "books": books, "artifacts": artifacts, "feedback": feedback,
+    return {"tasks": tasks, "books": books, "artifacts": artifacts, "feedback": feedback, "task_events": history,
             "control_hash": engine._controls(),
             "controller_hash": _sha({p.name: hashlib.sha256(p.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
                                      for p in sorted(Path(__file__).parent.glob("*.py"))})}
 
 
 def _state(capture):
-    return {"tasks": {k: _sha(v) if v is not None else None for k, v in capture["tasks"].items()},
+    return {**({"task_events": _sha(capture["task_events"])} if "task_events" in capture else {}),
+            "tasks": {k: _sha(v) if v is not None else None for k, v in capture["tasks"].items()},
             "books": capture["books"], "feedback": _sha(capture["feedback"]),
             "control_hash": capture["control_hash"], "controller_hash": capture["controller_hash"],
             "artifacts": {k: hashlib.sha256(v.encode("utf-8")).hexdigest() if v is not None else None for k, v in capture["artifacts"].items()}}
@@ -109,11 +112,14 @@ def _read(path):
     evaluation._exact(package, ("id", "record"), "bundle")
     record = package["record"]
     evaluation._exact(record, ("schema_version", "created_at", "spec", "baseline", "capture", "state"), "bundle record")
-    if record["schema_version"] != 1 or package["id"] != _sha(record):
+    if record["schema_version"] not in (1, 2) or package["id"] != _sha(record):
         raise EngineError("Bundle identity/integrity mismatch")
     _spec(record["spec"])
     capture = record["capture"]
-    evaluation._exact(capture, ("tasks", "books", "artifacts", "feedback", "control_hash", "controller_hash"), "capture")
+    capture_keys = ("tasks", "books", "artifacts", "feedback", "control_hash", "controller_hash")
+    if record["schema_version"] == 2:
+        capture_keys += ("task_events",)
+    evaluation._exact(capture, capture_keys, "capture")
     if (not isinstance(capture["tasks"], dict) or not isinstance(capture["artifacts"], dict)
             or not isinstance(capture["books"], dict)
             or set(capture["tasks"]) != set(record["spec"]["task_ids"])
@@ -142,6 +148,20 @@ def _read(path):
             raise EngineError("Task result hash mismatch")
         if task["status"] == "completed" and (task.get("result") is None or not task.get("result_revision")):
             raise EngineError("Completed task lacks result")
+    if record["schema_version"] == 2:
+        history = capture["task_events"]
+        if not isinstance(history, dict) or set(history) != set(capture["tasks"]):
+            raise EngineError("Task event history selection mismatch")
+        for tid, events in history.items():
+            if not isinstance(events, list):
+                raise EngineError("Invalid task event history")
+            for event in events:
+                evaluation._exact(event, ("id", "task_id", "book_id", "event", "payload", "created_at"), "peer event")
+                if event["task_id"] != tid or event["book_id"] != capture["tasks"][tid]["task"]["book_id"]:
+                    raise EngineError("Peer event task mismatch")
+                if not isinstance(event["payload"], str):
+                    raise EngineError("Invalid peer event payload")
+                _json(event["payload"], "peer event")
     if _state(capture) != record["state"]:
         raise EngineError("Bundle state mismatch")
     baseline = record["baseline"]
@@ -158,7 +178,7 @@ def create(engine, spec, output, baseline=None):
     if base and any(set(base["record"]["spec"][key]) != set(spec[key]) for key in ("task_ids", "artifacts")):
         raise EngineError("Selection changed; establish a new baseline explicitly")
     capture = _capture(engine, spec, required=True)
-    record = {"schema_version": 1, "created_at": now(), "spec": spec,
+    record = {"schema_version": 2, "created_at": now(), "spec": spec,
               "baseline": {"id": base["id"], "state": base["record"]["state"]} if base else None,
               "capture": capture, "state": _state(capture)}
     package = {"id": _sha(record), "record": record}
@@ -242,7 +262,7 @@ def _receive(engine, path, baseline=None):
                         "duplicate": duplicate, "path": relative}, "preflight": report}
 
 
-def guard_claim(engine, db, task):
+def guard_claim(engine, db, task, *, applying_bundle=None):
     """Fail closed on unprocessed peer evidence; called inside claim transaction.
 
     A matching selected baseline is acknowledged in the same transaction as the
@@ -291,6 +311,8 @@ def guard_claim(engine, db, task):
                     raise EngineError("Peer handoff resets cumulative counters")
             superseded.add(base["id"])
     for package in packages:
+        if package["id"] == applying_bundle:
+            continue  # Only the explicit atomic adoption path may consume this result.
         record = package["record"]
         peers = [h["task"] for h in record["capture"]["tasks"].values()
                  if h["task"]["book_id"] == task["book_id"]]
@@ -307,3 +329,79 @@ def guard_claim(engine, db, task):
         engine._event(db, "exchange.baseline_checked", {"bundle_id": package["id"],
                       "selected_state_hash": _sha(report["local_state"]),
                       "scope": "selected evidence only; peer latest state is unknown"}, task["id"], task["book_id"])
+
+
+def apply(engine, path, task_id, baseline, expected_base, expected_target):
+    """Explicitly adopt one completed write/revise task as a draft, atomically.
+
+    No generic file copying, foreign task creation, review acceptance, or merging.
+    A local queued task and the exact shared baseline must already exist.
+    """
+    from .engine import digest
+    from .records import validate_result
+    package, known = _read(path), _read(baseline)
+    record = package["record"]
+    spec = record["spec"]
+    if record["schema_version"] != 2 or spec["task_ids"] != [task_id] or spec["artifacts"]:
+        raise EngineError("Apply requires a v2 single-task bundle without extra artifacts")
+    if record["baseline"] != {"id": known["id"], "state": known["record"]["state"]}:
+        raise EngineError("Apply baseline mismatch")
+    received = checked_path(engine.root, f"runtime/exchange/inbox/{spec['origin']}/{spec['operation_id']}.json")
+    if _read(received) != package:
+        raise EngineError("Apply requires the exact received bundle")
+    peer = record["capture"]["tasks"][task_id]["task"]
+    if peer["kind"] not in ("write", "revise") or peer["status"] != "completed":
+        raise EngineError("Apply supports completed write/revise tasks only")
+    if peer["input_revision"] != expected_base or peer["result_revision"] != expected_target:
+        raise EngineError("Explicit input/target revision mismatch")
+    if record["capture"]["books"].get(peer["book_id"]) != expected_target:
+        raise EngineError("Peer has advanced beyond the selected result")
+    with engine._db(True) as db:
+        local = engine._row(db, "tasks", task_id)
+        for row in db.execute("SELECT payload FROM events WHERE task_id=? AND event='exchange.applied'", (task_id,)):
+            applied = json.loads(row["payload"])
+            if applied["bundle_id"] == package["id"]:
+                if local["result_hash"] != peer["result_hash"] or local["result_revision"] != expected_target:
+                    raise EngineError("Applied task has changed")
+                return {"bundle_id": package["id"], "revision": expected_target, "duplicate": True}
+        if local["status"] != "queued" or local["result"] is not None:
+            raise EngineError("Local task must be queued with no result; never replace active/stopped work")
+        if _state(_capture(engine, spec, required=True)) != known["record"]["state"]:
+            raise EngineError("Local state diverged from shared baseline")
+        for field in ("id", "book_id", "kind", "instruction", "input_revision", "control_hash", "created_at"):
+            if local[field] != peer[field]:
+                raise EngineError("Task identity or instruction mismatch")
+        if any(peer[k] < local[k] for k in ("attempts", "no_progress")):
+            raise EngineError("Cannot reset cumulative counters")
+        limits = engine.limits()
+        if not 1 <= peer["attempts"] <= limits["max_attempts"] or peer["no_progress"] >= limits["max_no_progress"]:
+            raise EngineError("Peer counters exceed local stop limits")
+        guard_claim(engine, db, local, applying_bundle=package["id"])
+        files = engine._fresh(db, local)
+        result = peer["result"]
+        encoded = canonical(result)
+        if len(encoded.encode('utf-8')) > limits["max_result_bytes"]:
+            raise EngineError("Result exceeds configured size limit")
+        validate_result(result, local, files)
+        engine._check_changes(files, result)
+        engine._check_adoption(files, result)
+        if not any(files.get(c["path"]) != c["content"] for c in result["changes"]):
+            raise EngineError("No effective change")
+        merged = {**files, **{c["path"]: c["content"] for c in result["changes"]}}
+        hashes = {p: digest(content) for p, content in sorted(merged.items())}
+        target = digest(canonical({"book_id": local["book_id"], "parent": expected_base,
+                                   "task_id": task_id, "hashes": hashes}))
+        if target != expected_target or hashes != record["capture"]["tasks"][task_id]["output_hashes"]:
+            raise EngineError("Result does not reproduce the expected target snapshot")
+        db.execute("UPDATE tasks SET result=?,result_hash=?,attempts=?,no_progress=?,status='submitted',updated_at=? WHERE id=?",
+                   (encoded, digest(encoded), peer["attempts"], peer["no_progress"], now(), task_id))
+        engine._publish_locked(db, engine._row(db, "tasks", task_id))
+        for event in record["capture"]["task_events"][task_id]:
+            engine._event(db, "exchange.peer_event", {"bundle_id": package["id"], "source_event": event}, task_id, local["book_id"])
+        engine._event(db, "exchange.applied", {"bundle_id": package["id"], "baseline_id": known["id"],
+                      "input_revision": expected_base, "target_revision": expected_target,
+                      "scope": "draft result only; peer feedback stays in received evidence"}, task_id, local["book_id"])
+        # Acknowledges this exact imported evidence, not unknown later peer work.
+        engine._event(db, "exchange.baseline_checked", {"bundle_id": package["id"],
+                      "selected_state_hash": _sha(record["state"]), "scope": "explicit draft adoption"}, task_id, local["book_id"])
+    return {"bundle_id": package["id"], "revision": expected_target, "duplicate": False}
