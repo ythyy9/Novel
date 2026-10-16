@@ -60,6 +60,8 @@ def parser():
     submit = sub.add_parser("task-submit")
     submit.add_argument("task")
     submit.add_argument("result", type=Path)
+    submit.add_argument("--expected-attempt", type=int, required=True,
+                        help="生成结果时任务包中的 attempts；不得改填当前次数来导入旧结果")
     run = sub.add_parser("task-run", help="运行一次 Codex 并提交候选；不自动publish或accept")
     run.add_argument("task")
     run.add_argument("--timeout", type=float, default=300)
@@ -81,6 +83,36 @@ def parser():
         command.add_argument("--text-file", type=Path, required=True)
         if name == "feedback":
             command.add_argument("--source", choices=("author", "target_reader"), default="author")
+            command.add_argument("--revision", help="反馈对应的实际阅读版本，默认当前版本")
+    sub.add_parser("feedback-show").add_argument("feedback")
+    diagnose = sub.add_parser("feedback-diagnose", help="追加原因假设、预防计划及实际验证记录，不自动修改方法")
+    diagnose.add_argument("feedback")
+    diagnose.add_argument("spec", type=Path)
+    bundle = sub.add_parser("bundle-create", help="生成本地离线包，不传输或发布")
+    bundle.add_argument("spec", type=Path)
+    bundle.add_argument("output", type=Path)
+    bundle.add_argument("--baseline", type=Path)
+    for name in ("bundle-check", "bundle-receive"):
+        bundle = sub.add_parser(name, help="校验离线交接；接收仅保存独立副本，不覆盖当前资料")
+        bundle.add_argument("package", type=Path)
+        bundle.add_argument("--baseline", type=Path)
+    adoption = sub.add_parser("bundle-apply", help="显式接续单个完成的写作/返修为待审核版本，不合并冲突")
+    adoption.add_argument("package", type=Path)
+    adoption.add_argument("task")
+    adoption.add_argument("--baseline", type=Path, required=True)
+    adoption.add_argument("--expected-base", required=True)
+    adoption.add_argument("--expected-target", required=True)
+    receipt = sub.add_parser("bundle-receipt", help="导出采用回执，不代表作者批准")
+    receipt.add_argument("source", type=Path)
+    receipt.add_argument("output", type=Path)
+    confirm = sub.add_parser("bundle-confirm", help="源端核对回执并生成共同基线")
+    confirm.add_argument("source", type=Path)
+    confirm.add_argument("receipt", type=Path)
+    confirm.add_argument("output", type=Path)
+    ack = sub.add_parser("bundle-ack", help="接收端核对源端确认并登记同一基线")
+    ack.add_argument("source", type=Path)
+    ack.add_argument("receipt", type=Path)
+    ack.add_argument("agreement", type=Path)
     sub.add_parser("audit")
     ref = sub.add_parser("reference-add", help="导入参考书并自动查全系列、获取、完整阅读分析；原文件保留")
     ref.add_argument("reference")
@@ -167,6 +199,24 @@ def execute(args):
                                     args.rationale_file.read_text(encoding="utf-8-sig"), args.reviewer)
         if cmd == "eval-decide":
             return evaluation.decide(engine.root, args.experiment, args.action, args.note)
+    if cmd.startswith("bundle-"):
+        from . import exchange
+        if cmd in ("bundle-receipt", "bundle-confirm", "bundle-ack"):
+            from . import exchange_ack
+            if cmd == "bundle-receipt":
+                return exchange_ack.receipt(engine, args.source, args.output)
+            if cmd == "bundle-confirm":
+                return exchange_ack.confirm(engine, args.source, args.receipt, args.output)
+            return exchange_ack.acknowledge(engine, args.source, args.receipt, args.agreement)
+        if cmd == "bundle-apply":
+            return exchange.apply(engine, args.package, args.task, args.baseline,
+                                  args.expected_base, args.expected_target)
+        if cmd == "bundle-create":
+            return exchange.create(engine, _json(args.spec.read_text(encoding="utf-8-sig"), "handoff spec"),
+                                   args.output, args.baseline)
+        if cmd == "bundle-check":
+            return exchange.check(engine, args.package, args.baseline)
+        return exchange.receive(engine, args.package, args.baseline)
     if cmd == "book-create":
         return engine.create_book(args.book, args.title)
     if cmd == "books":
@@ -216,7 +266,7 @@ def execute(args):
         return engine.claim(args.task)
     if cmd == "task-submit":
         result = _json(args.result.read_text(encoding="utf-8-sig"), "task result")
-        return engine.submit(args.task, result)
+        return engine.submit(args.task, result, expected_attempt=args.expected_attempt)
     if cmd == "task-publish":
         return engine.publish(args.task)
     if cmd == "task-prepare":
@@ -242,8 +292,13 @@ def execute(args):
         return engine.rollback(args.book, args.revision, args.note)
     if cmd == "decision":
         return engine.decision(args.book, args.text_file.read_text(encoding="utf-8-sig"))
+    if cmd in ("feedback-diagnose", "feedback-show"):
+        from . import feedback
+        if cmd == "feedback-show":
+            return feedback.show(engine, args.feedback)
+        return feedback.append(engine, args.feedback, _json(args.spec.read_text(encoding="utf-8-sig"), "feedback diagnosis"))
     if cmd == "feedback":
-        return engine.feedback(args.book, args.text_file.read_text(encoding="utf-8-sig"), args.source)
+        return engine.feedback(args.book, args.text_file.read_text(encoding="utf-8-sig"), args.source, args.revision)
     if cmd == "reference-import":
         return engine.reference(args.book, args.text_file.read_text(encoding="utf-8-sig"))
     if cmd == "audit":

@@ -113,9 +113,11 @@ python -m novel task-create $bookId research --instruction-file 'C:\path\researc
 ```powershell
 python -m novel task-claim $taskId
 python -m novel task-prepare $taskId
-python -m novel task-submit $taskId 'C:\path\result.json'
+python -m novel task-submit $taskId 'C:\path\result.json' --expected-attempt 1
 python -m novel task-publish $taskId
 ```
+
+`--expected-attempt` 为必填项，必须使用生成该结果时任务包内 `task.attempts` 的值（示例 1 仅适用于第一次领取）。恢复后须重新读取新任务包并生成本次结果，不能把旧结果的参数改成当前次数来绕过校验。旧命令省略此参数会报用法错误；正整数才合法。控制器会在事务中比较次数，过期结果不能提交，即使输入版本未变化。该绑定依赖操作员正确传递来源，不是执行者身份认证。
 
 这条路径与 `task-run` 二选一，不要再次领取已经 `running` 的任务。`task-prepare` 只能用于已领取任务。结果协议见 [协议说明](protocol.md)，相同结果重复提交、已完成任务重复发布是幂等操作；同一任务不能换一份不同结果覆盖原提交。
 
@@ -155,7 +157,7 @@ python -m novel feedback $bookId --text-file 'C:\path\reader-feedback.txt' --sou
 python -m novel audit
 ```
 
-搜索是当前作品版本的逐行、不区分大小写文本检索，不是语义检索。反馈保留原文、来源和当时版本，不自动改正文，也不能把 Agent 自评录成作者或目标读者反馈。`audit` 检查 SQLite、登记快照、版本关联、结果哈希和审核证据一致性，不评判小说质量。
+搜索是当前作品版本的逐行、不区分大小写文本检索，不是语义检索。反馈保留原文、来源和当时版本；迟到反馈可用 `--revision REV` 指定实际阅读版本，不自动改正文，也不能把 Agent 自评录成作者或目标读者反馈。`audit` 检查 SQLite、登记快照、版本关联、结果哈希和审核证据一致性，不评判小说质量。
 
 需要回到旧内容时，先完成或取消活动任务，再执行：
 
@@ -205,3 +207,9 @@ python -m novel excerpt BOOK manuscript/001.md --revision REVISION --start-line 
 本仓库的 `.gitignore` 忽略 `books/`、`runtime/`、本地验收目录和常见凭据文件，因此提交代码不会自动备份私有作品或模型日志。`policies/`、`methods/` 可被 Git 跟踪，勿在其中放凭据或不准备提交的私密原文。改用外部 `--root` 时，资料目录的 Git 规则由那个目录自行管理。
 
 模型结果没有作者决定、原始参考导入、反馈录入、阶段通过或规则修改的权限字段；操作员命令承载这些动作。这个区分是可检查的控制器协议与执行流程，不是人类身份认证或完整操作系统权限隔离。使用者必须具有相应作者授权。
+
+反馈后的原因调查与预防验证使用 `feedback-diagnose FEEDBACK_ID SPEC.json` 追加，`feedback-show FEEDBACK_ID` 回读。证据字段、旧版反馈、对照关联及不自动提升方法的边界见 [反馈闭环](feedback-loop.md)。
+
+离线双向交接：`bundle-create` 生成显式选择的本地包，`bundle-check` 比较共同基线和当前状态，`bundle-receive` 只保留独立副本及返回回执，不导入活动数据库。它不是实时同步；任务认领及执行准备会检查已接收包，范围、预检状态、授权传输边界及完整示例见 [离线交接](offline-exchange.md)。
+
+`bundle-apply` 仅将明确基线和目标的单个已完成写作/返修接续为draft；必须先接收v2包且本地任务仍queued。它不替代receive、不合并冲突或接受作者决定，参数与恢复边界见离线交接文档。

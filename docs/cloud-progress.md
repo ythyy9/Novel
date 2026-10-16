@@ -186,3 +186,170 @@ open("/run/codex-environment/codex-home/installation_id", O_RDWR|O_CREAT|O_LARGE
 无受支持方案已确认初始化成功，故不恢复原任务。本轮回读仍 blocked/tool_failure/attempts=1。新增健康诊断失败1次；模型失败仍1次/重试0，初始化诊断失败仍2次，工程与补丁累计沿用之前记录。
 
 最小复现、源码依据、已试配置、平台应处理的状态分离和推理通道、用户具体支持入口汇总于 docs/codex-platform-support.md。未代发工单，未公开用户链接，未读取认证原文或输出token。产品源码未变，不重跑已通过145项测试或规模脚本。当前需要平台支持动作，不能用无信息重试代替修复。
+
+## 外部提交绑定与实际审核（2026-10-16）
+
+起点 `619ed202f50c3af11197df0d15d3ae27aaccdb5a`，同一开发分支。按用户授权使用已有外部执行协议：当前外层云端 Codex 读取固定任务包并生成审核，控制器负责导入和发布；不是重新运行嵌套 CLI，不声称平台问题已修复。
+
+修复外部提交缺口：CLI `task-submit` 必填 `--expected-attempt N`，N 必须是生成时任务包中的 attempts。传入原有事务内尝试校验，在幂等返回前拒绝过期尝试，即使输入版本相同也拒绝。新增正整数校验；受信任 Python API 保留原可选参数兼容性。文档同步说明旧 CLI 调用需加参数；该约定不构成执行者身份认证，不能把旧结果改标新次数。
+
+实际验证，日志 `.local-validation/external-submit/`（忽略目录，不上传工程资料）：
+
+- 从未修改 HEAD 的 git archive 在临时目录运行 `python -m unittest discover -s tests -v`：exit=0，145 项/143 通过/2 Windows 跳过，8.465秒，`immutable-baseline.log`。最初工作区 baseline.log 运行期间发生编辑，不作为隔离基线证据。
+- 最终同一全量命令：exit=0，146 项/144 通过/2 Windows 跳过，12.808秒，`final.log`。覆盖缺参数、非法次数、同输入版本的旧尝试、正确提交/幂等/发布。`git diff --check` exit=0。
+- 原任务 `e8817187f6ef4170a03d65c39dd70e6e` 接续前 handoff 核实输入/当前版本/控制一致；`task-resume --note ...` → `task-claim` → `task-prepare` 均 exit=0，保留累计并得到 attempt-2。
+- 当前外层 Codex 实际读取 packet.json 全文及 schema；正文仅“港口在落日前开放。船在日落前抵达港口。”，Canon 四类状态为空。审核指出两者均在日落前不能推出二者先后，未虚构因果冲突；重复时间表达仅为轻微阅读观察。人物/情感/世界信息不足仍保留未决，未写正文或修改状态。
+- 实际结果位于原任务 `attempt-2/external-result.json`；`task-submit TASK RESULT --expected-attempt 2`、`task-publish TASK`、`assess cloud-fixture`、`handoff TASK`、`audit` 均 exit=0；输出分别为 external-submit 下同名 JSON。任务 completed/attempts=2；input/output revision 均 `c56993708c30d505c9386af3b5c4cbef7d01fe4968bb75ad1b0cdf63d3fa06e1`；result_hash=`ce6c6e68903c4f49f0eef75ab64f1ebe9e4e93e6088bf15af5980dbeb36f392a`。
+- handoff 输入/输出校验均 true，audit database=ok、snapshots_verified=2、events=12。SQLite 只读回读仍有 attempt=1 的 task.stopped/tool_failure 和 attempt=2 的 claimed/submitted/published，历史没有清除。
+- assess can_accept=false；实际 `accept cloud-fixture` exit=1，按未决信息正确拒绝（`accept-rejected.json`）。这是预期门禁验证，不能宣称作品被接受。
+
+证据分类：测试为合成自动回归；本次为真实外层模型阅读合成工程输入并导入的结果，不是测试桩，也不是嵌套适配器成功、独立会话复核或真人阅读反馈。用户授权的执行者切换已在 task.resumed 原始事件记录。
+
+累计：既有工程失败4次/夹具返修4次、修复前回归失败1次（5子场景）、补丁上下文失败2次保持；本轮新增非预期测试失败0。原任务累计2次执行：嵌套失败1次、外层完成1次；嵌套重试0，初始化失败2次、doctor失败1次保持。首次失败不清零。
+
+剩余：嵌套 installation_id EROFS/推理网络需平台修复；外部执行不受该初始化问题阻塞。研究工具实际链路、独立复核及作品/方法效果尚未通过；后两者需相应真实材料与作者决定。当前未引入付费工具、迁移认证或改权限。下一必要验证应围绕外部协议研究来源与审核事实区分，不能无限追加便利命令替代验收。
+
+## 反馈诊断与预防验证闭环（2026-10-16）
+
+起点 `30b6cd61f35243f89b52e0b5cdfab7ff16f1f55a`，同一 `codex/v1-local-workflow`，工作区干净；提交前远程回读仍为该 SHA，没有覆盖并发工作。按用户新授权暂搁置嵌套模型调用，不以其阻塞外层工作。本阶段优先补反馈闭环，暂不推进上一阶段列出的通用研究探针。
+
+核对既有实现：feedback 已保存原话/来源/当前版本；研究来源及修订版本已实现；evaluation 已有开发/留出盲序、分来源评价及保留/暂用/回滚门禁。最小缺口是原反馈到原因假设、预防计划及实验结果之间没有持久关联，而迟到反馈也无法明确指定实际阅读版本。
+
+实现 `feedback --revision`、追加式 `feedback-diagnose` 和 `feedback-show`：保存原反馈哈希，引用精确版本/路径/原句并校验快照归属与文件哈希，分字段保留假设、预防措施、适用范围、验证计划和实际结果（null表示未记录）。可绑定已有 experiment 清单与当时 summary，不重做评估系统；后续判断另追加，旧记录不随新评价变化。不自动解决问题、改正文或升级方法，不能证明隐藏模型动机。复用已有独占文件写入/哈希封装，无数据库迁移。
+
+验证与审查：
+
+- `python -m unittest discover -s tests -p test_feedback.py -v`：exit=0，5项通过，0.394秒，工具输出可回读。
+- `python -m unittest discover -s tests -v > .local-validation/feedback-loop/full.log 2>&1`：exit=0，152项、150通过、2 Windows专属跳过，14.851秒。
+- 合成“人物无依据知道他人想法”案例验证原话与历史版本、追加记录、完整目录备份恢复、跨作品/缺原句拒绝、篡改及串用反馈拒绝；已有开发/留出合成对照验证 Agent 判断不能升级方法且当时评价被保留。CLI 子进程覆盖真实文件导入和回读。不是用户章节或真人反馈，不据此声称预防措施有效。
+- `git diff --check` exit=0。差异审查核对无原则/限额/原反馈改写、无 task-run 或 stopped 任务恢复、无新增付费服务/权限。反馈诊断另由 feedback-show 验证，数据库 audit 不冒称覆盖新文件；备份说明已补充。
+
+用户原话和准确输入边界保存于 `docs/feedback-loop.md`。用户报告昨天已有章节，但本云端缺真实章节的 book id/版本/文件与生成日志，以及完整原作 `runtime/references/`；本机 `F:/Novel` 未提交资料不访问、不覆盖。不能把根目录缺资料解释成用户没有创作，也不把合成数据登记成其作品。下一步是资料到位后将具体意见关联实际阅读版本、核查命名/提示证据并提出可证伪的预防对照；当前没有足够证据判断“沈姓”问题的原因。
+
+累计停止/失败：既有工程失败4次/夹具返修4次、修复前回归失败1次（5子场景）、补丁上下文失败2次保持；本轮非预期测试失败0、实现返修0。原 e881任务仍保留嵌套失败1次及外层完成1次/attempts=2；嵌套重试0、初始化失败2次、doctor失败1次保持。没有为新回合清零，也未重新探测嵌套运行边界。
+
+## 作者第一版输入接收与版本澄清（2026-10-16）
+
+起点 `ebb656c177d3cc69bae72bd50ed4d3dba55eb4d2`，同分支、工作区干净。真实云端文件操作成功，未因断连提示假定成功或失败。已接收来源消息 `Sentinel_56cf679b24b08191addfe9c09aa3f627`（2026-10-16T01:42:58.258434Z）中的章节文本，排除包装标签，以 UTF-8/LF、141行、9534字节保存在忽略目录 `runtime/inputs/Sentinel_56cf679b24b08191addfe9c09aa3f627/chapter-as-shared.txt`。
+
+写入后逐字节回读与本次保存载荷相同；SHA-256 `f23020f6e6be336e0234f22f07431fe2848799bf8d01f7c302aea705b72eeb1d`。来源消息未提供独立文件校验和，不能将本次哈希说成与本机文件独立比对通过。`source.json` 保存来源、编码、哈希及两次版本澄清；`intake-status.json` 保存后续边界。三文件均经 `git check-ignore` 确认忽略，`git ls-files runtime/inputs` 为空；未上传原稿。
+
+用户先说明本地已经修改，随后明确本次贴出的是本地第一版、第二版已针对名字问题完成。已把输入标为历史第一版，不标最新版；第二版尚未同步。澄清前后的状态记录均保留，原文哈希不变。不擅定正式 book id、控制器 revision 或反馈 id，不重复改名、修文、生成、发布。
+
+本轮仅完成输入接收和缺口登记。现有反馈CLI需要确认的作品/版本绑定，故暂存未绑定接收记录，未伪造已运行 feedback-diagnose。按随后指示暂停真实命名问题的新诊断，不把已处理问题登记为待修，不对总体模型偏好或内部成因作结论。下一步等待第二版和本地修改依据/相关生成上下文，再比较具体变化、假设与预防验证；引用原作还需相应完整材料。
+
+存储/元数据回读和忽略检查均exit=0；仅数据接收与文档更新，产品源码未变，不重复152项回归。既有累计失败/停止次数全部保持，未启动嵌套调用或恢复任务。此次第一版输入补齐不等于第二版、生成上下文或原作已到位。
+
+## Windows反馈回归编码修复（2026-10-16）
+
+起点 fc22ce28b64d483ef84932bfdd06357856fddae5，工作区干净。通过现有 GitHub 连接器实际读取 run 38836922296/job 116768009649 日志：Windows Python 3.13.16，test_feedback.py:102 默认 read_text 使用 cp1252 读取 UTF-8 JSON，UnicodeDecodeError（byte 0x90，position 424），152项中1错误，exit=1。此前Linux通过不能代表Windows通过。
+
+修复测试中的读写均显式encoding=utf-8，篡改后的JSON保留中文（ensure_ascii=False）。全部篡改/串用拒绝断言保留；不跳过测试、不设置全局UTF-8环境变量、不改生产协议。
+
+实际命令：`python -m unittest discover -s tests -p test_feedback.py -v` exit=0，5项通过/0.498秒；全量 `python -m unittest discover -s tests -v` exit=0，152项/150通过/2 Windows专属跳过，14.262秒。日志 `.local-validation/windows-feedback-encoding/{targeted,full}.log`；`git diff --check` exit=0。新提交Windows/Linux CI待推送后独立回读，不以本机Linux结果代替。
+
+累计保留：既有工程失败4次/夹具返修4次、修复前回归失败1次（5子场景）、补丁上下文失败2次、模型/初始化/doctor失败原值不变。本轮另登记上述1个已核实Windows CI失败job及1次编码修复；其他失败job未自行推定次数。父线程两次继续调用UNKNOWN且未产生新turn，作为调度异常2次单列，不当作开发执行或清零重试。嵌套调用仍暂停。后续先核对CI，再实现离线交接协议，不连接未授权存储或上传作品。
+
+## 离线双向交接第一阶段与CI回读（2026-10-16）
+
+编码修复提交 `c1dfba0803763641abbe6b07c9d993ae63b8f05f` 的真实PR CI run 38845506294 已通过连接器独立回读：Ubuntu3.13/job116794992671、Windows3.13/job116794992902、Windows3.11/job116794992922、Ubuntu3.11/job116794992976全部completed/success。原Draft PR正文已追加该证据，未修改Draft/base。没有手动重跑失败旧提交。
+
+后续实现范围为已评估的最小本地协议：bundle-create生成显式选择的包；bundle-check比较可信共同基线/当前状态；bundle-receive仅保存runtime/exchange/inbox中的独立副本并返回接收回执。任务ID、输入/输出/当前版本、累计停止、关联作品原反馈从控制器读取；产物按显式路径保存内容及哈希。验证声明、未决项、下一步与排除项单列；不会把自述验证当真实测试。源码摘要统一换行避免跨平台假分叉。
+
+开工预检区分same_selected_state/unknown_baseline/incoming_ahead/local_ahead/diverged，并列出已完成任务和停止条件。基线须显式提供完整包验证，不信任来包自述；相同包幂等，同来源/操作ID内容变化拒绝。没有自动合并、活动数据库导入、实时传输或task-claim自动门禁，操作员须在开工前检查；peer_latest_known恒为false，不能宣称离线对端没有新工作。完整使用及边界见docs/offline-exchange.md。
+
+实际验证，日志 `.local-validation/offline-exchange/`：定向 `python -m unittest discover -s tests -p test_exchange.py -v` exit=0，5项/0.620秒（targeted.log）；首次全量exit=0，158项/156通过/2 Windows跳过，15.962秒（full.log）。差异审查后补充畸形任务检查，再全量同命令exit=0，159项/157通过/2 Windows跳过，14.691秒（final.log）。CLI子进程及两个独立合成目录覆盖双向回传预检、断开来源后的副本读取、拒绝分叉覆盖、原话/已完成/停止次数可见、重复包、同ID异内容、错误基线、损坏内容、非法路径、缺产物和源捕获变化。`git diff --check` exit=0。
+
+没有访问用户电脑或建立传输连接，没有将第一版章节、第二版、原作或其他真实资料打包/上传；只用自动测试合成资料。第一版仍为历史输入，第二版及依据待提供。真实跨端传输需目的地和资料范围授权；活动接续/自动开工门禁是后续独立任务，不能把本阶段只读预检当作自动阻止所有重复工作。
+
+累计本阶段非预期测试失败0。此前Windows失败job1/编码修复1、工程失败4/夹具返修4、预期修复前回归失败1、补丁上下文失败2、调度UNKNOWN2及模型/初始化/doctor记录保持。没有重置次数，没有嵌套模型调用。新交接提交的跨平台CI待推送后回读；上述四组success仅归属c1dfba0。
+
+## 交接预检接入实际开工入口（2026-10-16）
+
+起点 e914b6b43f7d0193c665a660e82bd5bc2fcc2aff，同分支、工作区干净。上一提交CI run38846092719四组success已回读并存于.local-validation/offline-exchange/ci-readback.json。继续授权包括可选择后续工程或创作；因只有历史第一版、第二版和修改依据未到，本阶段选择独立工程，不从旧稿续写。
+
+Engine.claim在同一认领事务中核对收件箱，prepare与run入口在实际准备/调用前重查，防止先认领后收件的漏检。对端已完成/取消的同任务ID禁止重做；未处理的执行中/停止任务和不同选定状态（落后/分叉/未知）阻止开工。纯输入包因无作品绑定保守覆盖所有作品。无交接记录保持原流程。
+
+核对一致时与认领一起记录exchange.baseline_checked，失败则共同回滚，不增加尝试。旧包已核对后不因正常本地进展永久阻塞；新包仍检查。后继包必须验证实际基线、同选择集和累计次数不减少，不按时间静默覆盖分支。历史完成任务禁重做不因旧包被替代而消失。receive发布文件与claim共用SQLite写锁序列化，接收中断留下损坏证据则拒绝开工。此门禁不替代分布式锁，不能阻止尚未交换新证据的两个离线端同时工作，也不自动中止已经开始的执行。
+
+验证日志.local-validation/exchange-gate/：首次定向exit=0，12项/1.366秒，含误导入测试类而重复收集的6个旧用例；随后改用模块引用消除重复，未计作新增覆盖。首次全量exit=0，166项/164通过/2 Windows跳过/16.007秒（full.log）；补充回滚/计数回归及CLI实际认领后，最终 `python -m unittest discover -s tests -v` exit=0，167项/165通过/2 Windows跳过/17.995秒（final.log）。未跳过新增断言。新用例验证两个合成目录的门禁、迟到交接在doctor之前拒绝、并发接收/认领、核对事件回滚、后继包计数保护和正常后续任务。没有实际启动嵌套模型；模拟执行入口只验证doctor未被调用。`git diff --check` exit=0。
+
+新增非预期测试失败0；保留工程失败4/夹具返修4、预期修复前失败1、补丁上下文失败2、Windows失败job1/编码修复1及模型/初始化/doctor原值。父线程报告上轮后另两次UNKNOWN（wfr_01a142c746b37d77a3e36b4a1a924b70）且未创建turn；与先前调度UNKNOWN2分列，累计4次，不当作任务执行重试。新提交CI待推送后核对准确SHA，不能沿用上一提交success。
+
+未访问用户电脑、未上传作品、未新建存储或凭据。下一依赖是受控的活动资料接续与交接确认，仍不能凭收件副本覆盖当前版本；真实传输需目的地及资料范围授权。第二版与本地修改依据尚缺，不重复改第一版。
+
+## 单任务活动资料受控接续（2026-10-16）
+
+起点6c322655c9a30a335dd514f8c67a42667284b4bc，工作区干净，同分支。上一提交四组CI run38859060138已回读success，证据.local-validation/exchange-gate/ci-readback.json。本次最小范围为已接收的单个完成write/revise任务：共享任务ID/输入基线，本地仍queued且无结果，显式expected-base/expected-target；只发布draft，不合并数据库、不自动创建作品或接受作者决定。
+
+新增bundle-apply；要求v2包，基线完整验证、本地选定状态一致、任务/指令/控制一致、当前输入及远端当前输出符合预期、计数不回退/超限。结果重新校验并从本地原输入重算目标快照，复用抽取的_publish_locked发布路径；其他未协调收件同样阻止应用。接续与完成指针/审计事件在同一SQLite事务提交，失败回滚；已落盘完整孤立快照可安全校验后复用。相同包幂等，不重复事件或回切版本。
+
+v2新增完整选定任务事件并纳入状态哈希；v1仍可读取但不能apply，须用当前版本重新导出共同基线。远端事件以exchange.peer_event连同原字段保留，不覆盖本地自增ID/事件/反馈；原稿快照不变。远端新增反馈只留收件证据，不自动导成本地作者反馈。两端审计和时间字段可以不同，不宣称全状态已同步。
+
+实际验证，日志.local-validation/exchange-apply/：定向 `python -m unittest discover -s tests -p test_exchange_apply.py -v` exit=0，4项/0.873秒（targeted.log）；首次全量exit=0，171项/169通过/2 Windows跳过/18.116秒（full.log）。审查补充其他收件冲突、CLI幂等、v1边界和原事件逐行保留后，最终全量同命令exit=0，174项/172通过/2 Windows跳过/16.531秒（final.log）。覆盖实际SQLite指针切换/原稿和反馈保留、远端失败与attempts=2、无重复事件、错误目标/本地并发反馈/本地停止拒绝、伪造作者决定拒绝、快照后异常注入回滚及重试、下一审核任务可认领。故障注入是模拟中断，不声称实际断电测试。`git diff --check` exit=0。
+
+新增非预期测试失败0；既有工程失败4/夹具返修4、预期修复前失败1、补丁上下文失败2、Windows失败job1/编码修复1、调度UNKNOWN累计4及模型/初始化/doctor原值全部保留。未运行嵌套模型，未接入存储或上传作品，仅合成目录。新提交准确四组CI待推送后回读。
+
+后续边界：两端真实传输目的地/资料范围仍需授权，真实第二版及本地修改依据仍缺。通用多任务分叉合并和跨端审计同一化不是本次小范围接续；不能以这些合成测试宣称真实两端已同步，也不从历史第一版续写。下一必要工程若继续扩展应先明确跨端确认和新共同基线的语义，不能直接覆盖任一端历史。
+
+## 采用回执、共同基线及反向接续闭环（2026-10-16）
+
+起点69d243e216b725dcb59e5694ea477de22fc768e0，同分支、工作区干净。上一提交准确四组CI run38859810219全success，回读证据.local-validation/exchange-apply/ci-readback.json。本轮按授权完成离线闭环最后边界，不扩大为通用同步服务。
+
+新增bundle-receipt（接收端必须已有exchange.applied）、bundle-confirm（源端仍与原导出状态一致）、bundle-ack（接收端核对确认和自身未分叉）。“收到”“采用”“本端登记共同基线”分别记录，均不是作者批准。相同agreement ID可在双方登记并用作下一轮基线；未登记的文件不能直接使用。源/接收端有活动或停止任务时拒绝新确认。
+
+共同状态比较作品/任务语义、输入输出与结果、累计次数、原反馈、控制与产物；各端任务时钟、历史detail和审计事件保留在原包/回执，不强行改写成同一数据库。只允许从确认的同作品版本继续一个完成revise任务；反向接续端尚无该任务时，在显式apply事务内导入这一个任务及结果，不能扩大为任意任务/作品导入。原指针、历史、反馈和次数保护沿用。确认重放不重复登记或回退版本；确认文件已落盘而登记失败可以同内容重试。
+
+实际验收：A→B采用、B回执→A确认、B确认登记同一新基线、B后续返修→A采用、反向回执再确认全链路在两个合成目录完成。覆盖缺采用证据/缺回执/未登记确认、错目标、两端新增反馈导致分叉、停止任务、旧确认重放、CLI及范围限制。故障注入分别验证确认文件写出后登记回滚，以及反向新任务/快照发布后事务失败时任务和当前指针一起回滚、重试成功。不是实际断电或真实两端传输。
+
+命令均 `python -m unittest discover -s tests ... -v`：定向test_exchange_ack.py exit=0，5项/1.439秒（.local-validation/exchange-ack/targeted.log）；全量181项/179通过/2 Windows跳过，exit=0，19.584秒（full.log）。补充重放后版本指针验证，全量exit=0/23.678秒（final.log）；最终补充反向新任务失败回滚断言，全量exit=0/22.818秒（final-with-recovery.log），仍181项。`git diff --check` exit=0。新提交四组CI待推送后准确回读。
+
+本轮非预期测试失败0；已有工程失败4/夹具返修4、预期修复前失败1、补丁上下文失败2、Windows失败job1/编码修复1、调度UNKNOWN累计4及模型/初始化/doctor次数保持。未运行嵌套模型、未访问本机、未上传私人作品或新建存储/凭据。
+
+已保存可执行真实接入清单docs/two-endpoint-checklist.md。当前闭环到此停止功能扩张：下一步依赖真实第二版/修改依据、首次共同基线来源及获准双向传输目的地/资料范围。现有历史第一版不能自动重建本地SQLite或代替第二版；真实接入未完成，不能将本轮合成证据写成已同步。首个已验证共同基线仍需在获准资料范围内建立，Git只同步代码。
+
+## SQLite sidecar消失竞态最小修复（2026-10-16）
+
+起点baccaa87aefbd7e51a040cb1c9871e2b09d7b2e1，工作区干净。连接器独立读取push run38860882368及job116842648168日志：该SHA的push运行Windows3.11在test_receive_serializes_with_claim→Engine.__init__→_db→checked_path的lstat收到novel.sqlite3-shm FileNotFoundError/WinError2，181项中1错误、exit=1；其余push三组success。此前PR run38860887744四组success仍为真，但不能概括为该提交所有CI都通过。没有重跑旧提交或只选择绿的一套。
+
+确定性回归在lstat前删除实际存在的WAL/SHM/journal文件。使用git archive HEAD隔离副本并加入新测试，运行 `python -m unittest discover -s tests -p test_path_race.py -k disappearing -v`：exit=1，1项内3个子场景FileNotFoundError（.local-validation/sidecar-race/immutable-before.log）；包装脚本exit=0表示成功确认预期失败。最初工作区before.log与编辑重叠，不作为修复前证据。原CI没有记录具体删除者，SQLite连接关闭删除sidecar是与复现相符的解释，不声称日志直接证明了哪个连接。
+
+最小源码修复：去掉exists/is_symlink再lstat的重复检查窗口，直接lstat；仅FileNotFoundError按原有“缺失组件允许创建”的语义处理。实际读到符号链接或FILE_ATTRIBUTE_REPARSE_POINT仍拒绝；PermissionError/NotADirectoryError/其他OSError仍抛出。未跳过断言、未放宽路径逃逸或junction保护；此修复不声称提供抵御同账户恶意路径替换的OS隔离。
+
+实际后验证：定向test_path_race.py exit=0，4项/0.304秒（targeted.log），含现存/悬空符号链接元数据、父级reparse、其他错误和缺失叶节点；既有真实Windows junction测试未改。全量 `python -m unittest discover -s tests -v` exit=0，185项/183通过/2 Windows专属跳过，28.344秒（full.log）。以120秒上限运行50轮接收认领并发+50轮三种sidecar消失，100项/9.437秒/exit=0（repeated.log）。后两者并行运行，临时数据目录独立。本机重复验证为Linux；不能冒称Windows压力运行。`git diff --check` exit=0。
+
+累计新增已核实Windows CI失败job1（此类累计2）、该竞态实现修复1；新增预期修复前回归失败运行1（3子场景，与此前1次/5子场景合计2次）。修复后非预期测试失败0。工程失败4/夹具返修4、补丁上下文失败2、调度UNKNOWN4及模型/初始化/doctor历史仍保留；不清零。未访问真实V2、不运行嵌套模型、不新增权限。
+
+本轮CI使用通用GitHub actions/runs按准确head_sha读取push与pull_request两套，再分别读取四个jobs；不再只依赖默认过滤PR的fetch_commit_workflow_runs。推送后结果待回读，日志索引保存于同一sidecar-race目录。仍需真实资料/传输授权的边界不变，本次不扩功能。
+
+## 真实本地与云端双向交接验收（2026-10-16）
+
+已完成真实 F:/Novel → 原云端 /workspace/Novel 独立恢复收件 → 当前外层云端 Codex 产出 → 本地受控接续 → 云端 confirm → 本地 ack。工程进度和完整版本/回执索引见 [本地与云端交接验收](local-cloud-handoff-2026-10-16.md)（首次文档提交6949bb786c517864621013710e366a606fa2b6d0）。这不是此前合成双目录闭环，也不是正式正文覆盖或作者文学批准。
+
+作者单独批准现有 Google Drive 的私有 Novel-Handoff 目录及双向资料范围后才上传。初始 ZIP SHA=27776922f4a6e6d69eeedd24f16895a1ba32b5457fa4989747347b016ad1fe6f，145项清单实际核验；云端原有历史第一版仍独立保留，真实第二版输入=b31e137b0fb8be41c0734c4b6cfdcc84512e30533d116b76448d517830fff278。两端均固定使用d71c3f9控制器，代码hash=eb3ed97433a0e1c63fa50d35008fb204740bb7520e04335ba7fab75cae85c5dd。Windows准确d71完整185项全部通过、无跳过、195.032秒；本轮不修改产品代码，不将该检查包装为新文档提交的CI结果。
+
+当前外层云端模型实际生成275汉字小片段；任务3c25249ec7d34141b011378f8f4b6817 completed/attempts=1，输出fafee60d7cf3f92ec3e54e01a0ae0b1610dd59a7e5f461dbec0eab647d8215a8为draft，第一章原字节未变。双方agreement=4f9d4562ddeff426ccfe0526f9c8e34f66afd6cad5156e7c32e8b7795f4e6f65，shared semantic state完全一致；云端10快照/55事件，本地10快照/59事件，各端原历史保留，不以数据库字节相同作完成条件。
+
+真实重复receive/apply/confirm/ack无重复事件或执行；对真实返回包的本地工程派生分支验证旧包不回退、diverged拒绝、缺附件停止及历史stop/resume/attempts=2保留。派生分支不是文学作品或实时分布式锁。传输中两次引用下载代理403保留，随后同一已授权连接器支持的有界legacy字节返回成功；未改变网络、认证或权限。一次反馈ID只读误查、一次工程脚本重带已有只追加修订记录的拒绝及修正另留，均不计为真实创作模型重试，也不改写此前累计失败。
+
+真实反馈诊断复用已有接口：初次任务指令已预填沈照，不能由输出推知模型内心动机或姓氏总体频率；作者定名艾宁、字形线索、原话、旧稿及实际差异均保留。后续片段保留宁字末钩线索，61处最终状态引文命中。只对本作任务包实施约束，不自动升级通用methods或门禁。作者新版阅读及文学/命名方法效果pending；共同下一步是等待作者阅读当前第二版和试读。未嵌套调用模型、未建Notion系统。本地原分支两个未推送提交及未提交参考书功能保持原状，尚未合并源码历史；不能宣称正式工作区已整体同步。
+
+
+## Windows路径解析失败定位（2026-10-16，尚非修复结论）
+
+从远端最新b8707c9e6dd160f33560a19f3432b1a5944e79c1克隆到隔离源码目录`.local-validation/ci-path-fix-20261016/`。原`/workspace/Novel`仍为d71c3f9，真实双端验收data不使用新控制器、不作修改。保留父端两份交接文档。
+
+保留原失败：b870 push run38890393880四组success；PR run38890400028 Windows3.13 job116938210039在test_receive_serializes_with_claim预期active/stopped却得到Path escapes project，185项中1失败。Windows3.11 job116938210178整体cancelled（test step success），不是四组全绿。云端已独立读取原Windows3.13日志，存隔离副本`.local-validation/path-resolution/original-job-116938210039.log`。此类已核实Windows失败job从2累计为3，旧失败不被后续通过覆盖。
+
+当前checked_path已有扩展drive/UNC前缀归一化。确定性Windows路径返回夹具验证同盘大小写、普通/扩展drive与UNC均通过；不同盘、兄弟目录和不同UNC端点仍拒绝。这些通过说明候选不足以解释原失败，不能冒称复现成功。参考CPython官方v3.13.9 Lib/ntpath.py的realpath实现，缺失路径解析和去前缀有额外系统调用；原CI未记录实际路径，不能据此锁定具体竞态。
+
+本提交只增加拒绝时的原路径与已解析比较路径诊断，仍只解析各一次、保留原拒绝条件与lstat/reparse检查；另在真实Windows重复原receive/claim场景50轮取得证据。Linux定向7项/6通过/1 Windows诊断跳过，exit0，spelling-diagnostic.log；不称作真实Windows验证。未调用模型、未改网络权限或作品。
+
+本次Linux全量 `python -m unittest discover -s tests -v` exit=0，188项/185通过/3 Windows跳过，日志diagnostic-full.log；git diff --check exit=0。下一步按新诊断提交分别读取push和PR CI，取得Windows真实路径后再决定修复，不重跑原失败冒充关闭。
+
+
+诊断提交5441d7b6793ac87e7509aa8c8f403e28985197b3已推送。准确SHA的push run38890969621和PR run38890975561均attempt1/completed/success，各四组全部通过；四个Windows job共200轮原并发场景通过，未取得新失败路径。另独立读取Windows3.13 job116940126886（188项/48.852秒/OK）及Windows3.11 job116940107995（188项/37.367秒/OK）原日志，确认新增50轮测试实际执行而非跳过。完整运行/job索引在隔离副本`.local-validation/path-resolution/ci-5441d7b.json`。这些结果不关闭原b870失败；当前提交是诊断增强，不是已验证根因修复。
+
+父端补充原失败解释器为3.13.16，正在独立Windows以该版本和3.11.9作有界复现；云端已回查[官方v3.13.16 ntpath.py](https://raw.githubusercontent.com/python/cpython/v3.13.16/Lib/ntpath.py)，未把nonstrict缺失路径的候选机制当成已确认原因。需要失败时原路径与resolve返回值的关联证据；当前不采用未经复现的最近祖先解析替换，不扩大容错、不修改断言、不额外制造模型任务。真实d71源码目录仍干净，验收data仍55事件、两条诊断文件哈希不变。
+
+本机复验入口（隔离源码副本使用5441d7b或其仅文档后继，勿更新真实交接控制器）：`python -m unittest discover -s tests -p test_path_race.py -v`。Windows专属项含50轮原receive/claim竞态，失败保留具体比较路径；Linux则明确跳过。全量入口保持`python -m unittest discover -s tests -v`。后续在捕获真实错误路径后补确定性回归，再做最小产品修复；没有因暂未复现宣称解决。

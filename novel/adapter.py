@@ -185,6 +185,8 @@ def prepare(engine: Any, task_id: str) -> Path:
     task = engine.task(task_id)
     if task["status"] != "running":
         raise ValueError("prepare requires a running task; claim it first")
+    if hasattr(engine, "execution_preflight"):
+        engine.execution_preflight(task_id)
     files = engine.files(task["book_id"], task["input_revision"])
     schema_path = Path(__file__).resolve().parent.parent / "schemas" / "result.schema.json"
     schema = schema_path.read_text(encoding="utf-8")
@@ -307,6 +309,8 @@ def run(engine: Any, task_id: str, timeout: float = 300, executable: str = "code
         task = engine.task(task_id)
     if task["status"] != "running":
         raise ValueError("run requires a queued or running task")
+    if hasattr(engine, "execution_preflight"):
+        engine.execution_preflight(task_id)
     directory: Path | None = None
     try:
         directory = prepare(engine, task_id)

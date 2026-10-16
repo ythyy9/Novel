@@ -46,6 +46,10 @@ def identifier(value):
 
 def checked_path(root: Path, relative: str) -> Path:
     """Reject junctions/symlinks as well as lexical escapes, on every access."""
+    return _checked_path(root, relative, deleted_rechecks=3)
+
+
+def _checked_path(root: Path, relative: str, deleted_rechecks: int) -> Path:
     if not relative or "\\" in relative or ":" in relative:
         raise EngineError("Unsafe local path")
     parts = relative.split("/")
@@ -55,10 +59,15 @@ def checked_path(root: Path, relative: str) -> Path:
     for part in (None, *parts):
         if part is not None:
             path = path / part
-        if path.exists() or path.is_symlink():
+        try:
             info = path.lstat()
-            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
-                raise EngineError(f"Reparse points are not supported: {path}")
+        except FileNotFoundError:
+            # Missing components are allowed for creation. SQLite may also
+            # remove WAL/SHM/journal files while another connection closes.
+            # Inspect directly: exists() followed by lstat() races that removal.
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+            raise EngineError(f"Reparse points are not supported: {path}")
     def comparison_path(value):
         resolved = str(value.resolve())
         # On Windows, realpath may retain \\?\ when a missing parent is created
@@ -72,8 +81,19 @@ def checked_path(root: Path, relative: str) -> Path:
                 resolved = resolved[4:]
         return Path(resolved)
 
-    if not comparison_path(path).is_relative_to(comparison_path(root)):
-        raise EngineError("Path escapes project")
+    resolved_path = comparison_path(path)
+    resolved_root = comparison_path(root)
+    if not resolved_path.is_relative_to(resolved_root):
+        # A concurrently removed SQLite sidecar can resolve through its still
+        # open NTFS handle to $Extend/$Deleted. Recheck the original path with
+        # every lexical, lstat/reparse and containment check intact; never
+        # accept or normalize the tombstone itself as a project path.
+        if (os.name == "nt" and deleted_rechecks
+                and tuple(p.casefold() for p in resolved_path.parts[1:3]) == ("$extend", "$deleted")):
+            return _checked_path(root, relative, deleted_rechecks - 1)
+        raise EngineError(
+            f"Path escapes project: path={str(path)!r}, root={str(root)!r}, "
+            f"resolved_path={str(resolved_path)!r}, resolved_root={str(resolved_root)!r}")
     return path
 
 
@@ -367,13 +387,26 @@ class Engine:
             if task["status"] != "queued":
                 raise EngineError("Only queued tasks can be claimed")
             self._fresh(db, task)
+            from .exchange import guard_claim
+            guard_claim(self, db, task)
             if task["attempts"] >= self.limits()["max_attempts"]:
                 raise EngineError("Cumulative attempt limit exhausted")
             db.execute("UPDATE tasks SET status='running',attempts=attempts+1,updated_at=? WHERE id=?", (now(), task_id))
             self._event(db, "task.claimed", {"attempt": task["attempts"] + 1}, task_id, task["book_id"])
         return self.task(task_id)
 
+    def execution_preflight(self, task_id):
+        with self._db(True) as db:
+            task = self._row(db, "tasks", task_id)
+            if task["status"] != "running":
+                raise EngineError("Execution preflight requires a running task")
+            self._fresh(db, task)
+            from .exchange import guard_claim
+            guard_claim(self, db, task)
+
     def submit(self, task_id, result, *, expected_attempt=None):
+        if expected_attempt is not None and (type(expected_attempt) is not int or expected_attempt < 1):
+            raise EngineError("expected_attempt must be a positive integer")
         encoded = canonical(result)
         if len(encoded.encode("utf-8")) > self.limits()["max_result_bytes"]:
             raise EngineError("Result exceeds configured size limit")
@@ -463,26 +496,31 @@ class Engine:
                 return self.task(task_id)
             if task["status"] != "submitted":
                 raise EngineError("Submit a validated result before publishing")
-            files = self._fresh(db, task)
-            result = json.loads(task["result"])
-            if digest(canonical(result)) != task["result_hash"]:
-                raise EngineError("Stored result hash mismatch")
-            validate_result(result, task, files)
-            self._check_changes(files, result)
-            if task["kind"] == "review":
-                revision = task["input_revision"]
-                db.execute("INSERT INTO reviews VALUES (?,?,?,?)", (task_id, task["book_id"], revision, task["result"]))
-                # New evidence always reopens the stage, including an accepted version.
-                db.execute("UPDATE revisions SET status='draft' WHERE id=?", (revision,))
-            else:
-                self._check_adoption(files, result)
-                files.update({c["path"]: c["content"] for c in result["changes"]})
-                revision = self._snapshot(task["book_id"], files, task["input_revision"], task_id)
-                db.execute("INSERT INTO revisions VALUES (?,?,?,?,?,?)", (revision, task["book_id"], task["input_revision"], "draft", task_id, now()))
-                db.execute("UPDATE books SET current_revision=? WHERE id=?", (revision, task["book_id"]))
-            db.execute("UPDATE tasks SET status='completed',result_revision=?,updated_at=? WHERE id=?", (revision, now(), task_id))
-            self._event(db, "task.published", {"revision": revision}, task_id, task["book_id"])
+            self._publish_locked(db, task)
         return self.task(task_id)
+
+    def _publish_locked(self, db, task):
+        task_id = task["id"]
+        files = self._fresh(db, task)
+        result = json.loads(task["result"])
+        if digest(canonical(result)) != task["result_hash"]:
+            raise EngineError("Stored result hash mismatch")
+        validate_result(result, task, files)
+        self._check_changes(files, result)
+        if task["kind"] == "review":
+            revision = task["input_revision"]
+            db.execute("INSERT INTO reviews VALUES (?,?,?,?)", (task_id, task["book_id"], revision, task["result"]))
+            # New evidence always reopens the stage, including an accepted version.
+            db.execute("UPDATE revisions SET status='draft' WHERE id=?", (revision,))
+        else:
+            self._check_adoption(files, result)
+            files.update({c["path"]: c["content"] for c in result["changes"]})
+            revision = self._snapshot(task["book_id"], files, task["input_revision"], task_id)
+            db.execute("INSERT INTO revisions VALUES (?,?,?,?,?,?)", (revision, task["book_id"], task["input_revision"], "draft", task_id, now()))
+            db.execute("UPDATE books SET current_revision=? WHERE id=?", (revision, task["book_id"]))
+        db.execute("UPDATE tasks SET status='completed',result_revision=?,updated_at=? WHERE id=?", (revision, now(), task_id))
+        self._event(db, "task.published", {"revision": revision}, task_id, task["book_id"])
+        return revision
 
     def assessment(self, book_id):
         with self._db() as db:
@@ -733,15 +771,20 @@ class Engine:
                 "research": research, "reviews": reviews,
                 "scope": "explicit state citations, declared research impact and same-revision review coverage; not acceptance or semantic proof"}
 
-    def feedback(self, book_id, text, source="author"):
+    def feedback(self, book_id, text, source="author", revision=None):
         if source not in ("author", "target_reader") or not text.strip():
             raise EngineError("Feedback needs exact text and author/target_reader source")
         with self._db(True) as db:
             book = self._row(db, "books", book_id)
+            revision = revision or book["current_revision"]
+            version = self._row(db, "revisions", revision)
+            if version["book_id"] != book_id:
+                raise EngineError("Feedback revision belongs to another book")
+            self._read_snapshot(book_id, revision)
             feedback_id = uuid.uuid4().hex
-            db.execute("INSERT INTO feedback VALUES (?,?,?,?,?,?)", (feedback_id, book_id, book["current_revision"], source, text, now()))
+            db.execute("INSERT INTO feedback VALUES (?,?,?,?,?,?)", (feedback_id, book_id, revision, source, text, now()))
             self._event(db, "feedback.recorded", {"feedback_id": feedback_id, "source": source}, book_id=book_id)
-        return {"id": feedback_id, "revision": book["current_revision"], "source": source, "text": text}
+        return {"id": feedback_id, "revision": revision, "source": source, "text": text}
 
     def decision(self, book_id, text):
         """Trusted operator ingress, not exposed in the model result protocol.
