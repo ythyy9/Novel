@@ -101,6 +101,17 @@ def parser():
     adoption.add_argument("--baseline", type=Path, required=True)
     adoption.add_argument("--expected-base", required=True)
     adoption.add_argument("--expected-target", required=True)
+    receipt = sub.add_parser("bundle-receipt", help="导出采用回执，不代表作者批准")
+    receipt.add_argument("source", type=Path)
+    receipt.add_argument("output", type=Path)
+    confirm = sub.add_parser("bundle-confirm", help="源端核对回执并生成共同基线")
+    confirm.add_argument("source", type=Path)
+    confirm.add_argument("receipt", type=Path)
+    confirm.add_argument("output", type=Path)
+    ack = sub.add_parser("bundle-ack", help="接收端核对源端确认并登记同一基线")
+    ack.add_argument("source", type=Path)
+    ack.add_argument("receipt", type=Path)
+    ack.add_argument("agreement", type=Path)
     sub.add_parser("audit")
     experiment = sub.add_parser("eval-create")
     experiment.add_argument("spec", type=Path)
@@ -143,6 +154,13 @@ def execute(args):
             return evaluation.decide(engine.root, args.experiment, args.action, args.note)
     if cmd.startswith("bundle-"):
         from . import exchange
+        if cmd in ("bundle-receipt", "bundle-confirm", "bundle-ack"):
+            from . import exchange_ack
+            if cmd == "bundle-receipt":
+                return exchange_ack.receipt(engine, args.source, args.output)
+            if cmd == "bundle-confirm":
+                return exchange_ack.confirm(engine, args.source, args.receipt, args.output)
+            return exchange_ack.acknowledge(engine, args.source, args.receipt, args.agreement)
         if cmd == "bundle-apply":
             return exchange.apply(engine, args.package, args.task, args.baseline,
                                   args.expected_base, args.expected_target)

@@ -172,12 +172,42 @@ def _read(path):
     return package
 
 
+def _baseline(engine, path):
+    candidate = Path(path).absolute()
+    checked_path(candidate.parent, candidate.name)
+    if candidate.stat().st_size > MAX_BYTES:
+        raise EngineError("Baseline exceeds size limit")
+    obj = _json(candidate.read_text(encoding="utf-8"), "baseline")
+    if isinstance(obj, dict) and isinstance(obj.get("record"), dict) and obj["record"].get("kind") == "agreement":
+        from . import exchange_ack
+        known = exchange_ack.read_agreement(path)
+        with engine._db() as db:
+            if not exchange_ack._registered(db, known["id"]):
+                raise EngineError("Shared baseline not confirmed on this endpoint")
+        return known
+    return _read(path)
+
+
+def _baseline_state(engine, known, spec):
+    if known["record"].get("kind") == "agreement":
+        from .exchange_ack import shared
+        return shared(_capture(engine, known["record"]["spec"], required=True))
+    return _state(_capture(engine, spec, required=True))
+
+
 def create(engine, spec, output, baseline=None):
     _spec(spec)
-    base = _read(baseline) if baseline else None
-    if base and any(set(base["record"]["spec"][key]) != set(spec[key]) for key in ("task_ids", "artifacts")):
+    base = _baseline(engine, baseline) if baseline else None
+    if base and base["record"].get("kind") != "agreement" and any(set(base["record"]["spec"][key]) != set(spec[key]) for key in ("task_ids", "artifacts")):
         raise EngineError("Selection changed; establish a new baseline explicitly")
     capture = _capture(engine, spec, required=True)
+    if base and base["record"].get("kind") == "agreement":
+        if len(spec["task_ids"]) != 1 or spec["artifacts"]:
+            raise EngineError("Confirmed baseline supports one subsequent revise task only")
+        task = capture["tasks"][spec["task_ids"][0]]["task"]
+        if (task["kind"] != "revise" or task["status"] != "completed"
+                or base["record"]["state"]["books"].get(task["book_id"]) != task["input_revision"]):
+            raise EngineError("Subsequent revision must start at the confirmed book version")
     record = {"schema_version": 2, "created_at": now(), "spec": spec,
               "baseline": {"id": base["id"], "state": base["record"]["state"]} if base else None,
               "capture": capture, "state": _state(capture)}
@@ -204,10 +234,14 @@ def _check_package(engine, package, baseline):
     base = record["baseline"]
     baseline_verified = False
     if baseline:
-        known = _read(baseline)
+        known = _baseline(engine, baseline)
         if base is None or base != {"id": known["id"], "state": known["record"]["state"]}:
             raise EngineError("Provided baseline does not match bundle")
         baseline_verified = True
+        if known["record"].get("kind") == "agreement":
+            from .exchange_ack import shared
+            local = _baseline_state(engine, known, record["spec"])
+            remote = shared(record["capture"])
     if local == remote:
         status = "same_selected_state"
     elif not baseline_verified:
@@ -334,12 +368,13 @@ def guard_claim(engine, db, task, *, applying_bundle=None):
 def apply(engine, path, task_id, baseline, expected_base, expected_target):
     """Explicitly adopt one completed write/revise task as a draft, atomically.
 
-    No generic file copying, foreign task creation, review acceptance, or merging.
-    A local queued task and the exact shared baseline must already exist.
+    No generic file copying, review acceptance, or merging. A raw bundle baseline
+    requires an existing queued task; a registered agreement can admit one new
+    revise task on its exact confirmed book version.
     """
     from .engine import digest
     from .records import validate_result
-    package, known = _read(path), _read(baseline)
+    package, known = _read(path), _baseline(engine, baseline)
     record = package["record"]
     spec = record["spec"]
     if record["schema_version"] != 2 or spec["task_ids"] != [task_id] or spec["artifacts"]:
@@ -356,18 +391,32 @@ def apply(engine, path, task_id, baseline, expected_base, expected_target):
         raise EngineError("Explicit input/target revision mismatch")
     if record["capture"]["books"].get(peer["book_id"]) != expected_target:
         raise EngineError("Peer has advanced beyond the selected result")
+    if known["record"].get("kind") == "agreement":
+        if peer["kind"] != "revise" or known["record"]["state"]["books"].get(peer["book_id"]) != expected_base:
+            raise EngineError("Task is outside the confirmed baseline book/version")
     with engine._db(True) as db:
-        local = engine._row(db, "tasks", task_id)
+        row = db.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        local = dict(row) if row else None
         for row in db.execute("SELECT payload FROM events WHERE task_id=? AND event='exchange.applied'", (task_id,)):
             applied = json.loads(row["payload"])
             if applied["bundle_id"] == package["id"]:
                 if local["result_hash"] != peer["result_hash"] or local["result_revision"] != expected_target:
                     raise EngineError("Applied task has changed")
                 return {"bundle_id": package["id"], "revision": expected_target, "duplicate": True}
-        if local["status"] != "queued" or local["result"] is not None:
+        if local is not None and (local["status"] != "queued" or local["result"] is not None):
             raise EngineError("Local task must be queued with no result; never replace active/stopped work")
-        if _state(_capture(engine, spec, required=True)) != known["record"]["state"]:
+        if _baseline_state(engine, known, spec) != known["record"]["state"]:
             raise EngineError("Local state diverged from shared baseline")
+        if local is None:
+            if (known["record"].get("kind") != "agreement" or peer["kind"] != "revise"
+                    or known["record"]["state"]["books"].get(peer["book_id"]) != expected_base):
+                raise EngineError("New task requires a confirmed shared baseline and revise kind")
+            local = {**peer, "status":"queued", "attempts":0, "no_progress":0, "stop_reason":None,
+                     "detail":None, "result":None, "result_hash":None, "result_revision":None, "updated_at":now()}
+            columns = ("id","book_id","kind","instruction","input_revision","control_hash","status","attempts",
+                       "no_progress","stop_reason","detail","result","result_hash","result_revision","created_at","updated_at")
+            db.execute("INSERT INTO tasks VALUES (" + ",".join("?" for _ in columns) + ")", tuple(local[k] for k in columns))
+            engine._event(db, "exchange.task_imported", {"agreement_id":known["id"], "bundle_id":package["id"]}, task_id, local["book_id"])
         for field in ("id", "book_id", "kind", "instruction", "input_revision", "control_hash", "created_at"):
             if local[field] != peer[field]:
                 raise EngineError("Task identity or instruction mismatch")

@@ -93,3 +93,26 @@ python -m novel --root DATA bundle-apply RECEIVED.json TASK_ID --baseline BASE.j
 快照持久化、任务完成、当前指针及接续事件在一个SQLite事务中发布。失败回滚数据库，已落盘完整孤立快照可在相同重试时验证复用；不承诺清理所有孤立文件。相同包/任务/目标的重试通过exchange.applied识别，不重复事件或切回旧版本；不同包不能覆盖已有任务结果。接续完成记录已核对该包，后续任务可沿当前版本继续，未知新交接仍需检查。
 
 这是有共同基线的单任务接续，不是双向数据库自动合并。两端本地审计事件与updated_at可不同，不能因正文相同宣称全部状态已同步；后续共同基线仍需明确核对。当前只在合成目录验证，未对历史第一版或未知第二版执行。
+
+## 采用确认与下一个共同基线
+
+采用不是作者批准。新增三步均只生成/核对本地文件，不发送数据：
+
+```text
+# B确已apply A的包后，产生采用回执
+python -m novel --root B bundle-receipt A-RESULT.json B-RECEIPT.json
+# A取得该回执，核对自身仍是导出时状态，并生成确认
+python -m novel --root A bundle-confirm A-RESULT.json B-RECEIPT.json AGREEMENT.json
+# B取得确认，并核对本地仍与回执一致
+python -m novel --root B bundle-ack A-RESULT.json B-RECEIPT.json AGREEMENT.json
+```
+
+B仅receive不能出具采用回执。缺文件、错包/错目标、源端导出后发生变化、B回执后发生分叉、任何相关活动/停止任务均阻止新的确认。共同基线必须在本端登记exchange.agreement_registered后才能用于下一轮；仅拿到一个确认文件不够。A登记表示源端已确认，B登记表示确认已送达该端，不宣称A已获知B的登记或实时在线。
+
+两端登记同一agreement ID，但保留各自完整审计。比较的共同状态包括作品版本、任务身份/指令/输入/结果/状态/累计次数、反馈内容、控制版本和选定产物；排除各端updated_at/created_at等任务时钟、历史detail和事件行差异。原包与回执仍保留这些原字段，不删改它们以求数据库相同。原始反馈保持完整比较，不能把新的作者意见忽略成“只是审计差异”。哈希不是身份签名，文件仍需经用户授权的可信渠道交付。
+
+新共同基线只允许下一项单任务revise：必须从确认的同作品版本开始、完成且没有附加artifacts。B后续返修完成后，可用`bundle-create ... --baseline AGREEMENT.json`；A先receive，再用同agreement及显式输入/输出版本apply。本端尚无该新任务时，仅这条已确认基线上的revise允许在接续事务中创建其记录；不导入其他任务或作者决定。事务失败时新任务也回滚。
+
+反向接续后可交换反向回执和确认，继续建立下一基线。重放同一确认/ack幂等，不重复登记或回退当前版本；旧基线本身不能绕过新的本地状态比较。确认文件写完而登记失败时，重试验证相同文件并补齐登记；残缺/不同内容不会被静默覆盖，应保留证据并用新路径重新输出。没有分布式事务、通用自动合并或全项目同步保证。
+
+真实接入的范围和前置条件见 [两端接入清单](two-endpoint-checklist.md)。
