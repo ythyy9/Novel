@@ -59,6 +59,8 @@ def parser():
     submit = sub.add_parser("task-submit")
     submit.add_argument("task")
     submit.add_argument("result", type=Path)
+    submit.add_argument("--expected-attempt", type=int, required=True,
+                        help="生成结果时任务包中的 attempts；不得改填当前次数来导入旧结果")
     run = sub.add_parser("task-run", help="运行一次 Codex 并提交候选；不自动publish或accept")
     run.add_argument("task")
     run.add_argument("--timeout", type=float, default=300)
@@ -156,7 +158,7 @@ def execute(args):
         return engine.claim(args.task)
     if cmd == "task-submit":
         result = _json(args.result.read_text(encoding="utf-8-sig"), "task result")
-        return engine.submit(args.task, result)
+        return engine.submit(args.task, result, expected_attempt=args.expected_attempt)
     if cmd == "task-publish":
         return engine.publish(args.task)
     if cmd == "task-prepare":

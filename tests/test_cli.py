@@ -115,7 +115,7 @@ class CliTests(unittest.TestCase):
         claimed = self.json_command("task-claim", task["id"])
         self.assertEqual(claimed["attempts"], 1)
         result_path = self.json_file("写作 结果.json", self.result(claimed))
-        submitted = self.json_command("task-submit", task["id"], result_path)
+        submitted = self.json_command("task-submit", task["id"], result_path, "--expected-attempt", "1")
         self.assertEqual(submitted["status"], "submitted")
         self.assertEqual(self.json_command("files", "cli-book"), ["canon/state.json"])
         handoff = self.json_command("handoff", task["id"])
@@ -138,7 +138,7 @@ class CliTests(unittest.TestCase):
             "findings": [],
         }
         review_path = self.json_file("审核结果.json", self.result(review_task, review=review))
-        self.json_command("task-submit", review_task["id"], review_path)
+        self.json_command("task-submit", review_task["id"], review_path, "--expected-attempt", "1")
         self.json_command("task-publish", review_task["id"])
         assessment = self.json_command("assess", "cli-book")
         self.assertTrue(assessment["can_accept"])
@@ -162,6 +162,29 @@ class CliTests(unittest.TestCase):
         self.assertEqual(self.json_command("audit")["snapshots_verified"], 2)
         self.assertEqual(len(self.json_command("tasks", "--book", "cli-book")), 2)
 
+    def test_external_submission_requires_and_binds_attempt(self):
+        task = self.create_task()
+        self.json_command("task-claim", task["id"])
+        result_path = self.json_file("external-result.json", self.result(task))
+        self.command("task-submit", task["id"], result_path, expected=2)
+        self.json_command("task-recover", task["id"], "--note", "工程夹具执行者已停止")
+        self.json_command("task-resume", task["id"], "--note", "工程夹具明确接续")
+        second = self.json_command("task-claim", task["id"])
+        self.assertEqual(second["attempts"], 2)
+        self.assertEqual(second["input_revision"], task["input_revision"])
+        stale = self.error_command("task-submit", task["id"], result_path, "--expected-attempt", "1")
+        self.assertIn("superseded", stale["error"])
+        self.assertIsNone(self.json_command("task-show", task["id"])["result"])
+        for invalid in ("0", "-1"):
+            self.error_command("task-submit", task["id"], result_path, "--expected-attempt", invalid)
+        # A newly prepared second-attempt fixture; identical content is allowed, identity is explicit.
+        second_path = self.json_file("external-result-attempt-2.json", self.result(second))
+        submitted = self.json_command("task-submit", task["id"], second_path, "--expected-attempt", "2")
+        self.assertEqual(submitted["status"], "submitted")
+        self.assertEqual(self.json_command("task-submit", task["id"], second_path, "--expected-attempt", "2"), submitted)
+        self.error_command("task-submit", task["id"], result_path, "--expected-attempt", "1")
+        self.assertEqual(self.json_command("task-publish", task["id"])["status"], "completed")
+
     def test_bad_json_and_duplicate_keys_fail_without_submitting(self):
         task = self.create_task()
         self.json_command("task-claim", task["id"])
@@ -171,7 +194,7 @@ class CliTests(unittest.TestCase):
         ):
             with self.subTest(name=name):
                 path = self.text_file(name, content, bom=True)
-                error = self.error_command("task-submit", task["id"], path)
+                error = self.error_command("task-submit", task["id"], path, "--expected-attempt", "1")
                 self.assertEqual(error["type"], "ValidationError")
                 if name == "duplicate.json":
                     self.assertIn("duplicate", error["error"].lower())

@@ -63,6 +63,9 @@ engine.publish(sys.argv[2])
         self.engine.claim(task["id"])
         with self.assertRaises(ValueError):
             self.engine.submit(task["id"], self.result(task), expected_attempt=1)
+        for invalid in (0, -1, True, 1.5):
+            with self.subTest(attempt=invalid), self.assertRaises(ValueError):
+                self.engine.submit(task["id"], self.result(task), expected_attempt=invalid)
         self.assertEqual(self.engine.task(task["id"])["status"], "running")
         self.engine.submit(task["id"], self.result(task), expected_attempt=2)
 

@@ -186,3 +186,25 @@ open("/run/codex-environment/codex-home/installation_id", O_RDWR|O_CREAT|O_LARGE
 无受支持方案已确认初始化成功，故不恢复原任务。本轮回读仍 blocked/tool_failure/attempts=1。新增健康诊断失败1次；模型失败仍1次/重试0，初始化诊断失败仍2次，工程与补丁累计沿用之前记录。
 
 最小复现、源码依据、已试配置、平台应处理的状态分离和推理通道、用户具体支持入口汇总于 docs/codex-platform-support.md。未代发工单，未公开用户链接，未读取认证原文或输出token。产品源码未变，不重跑已通过145项测试或规模脚本。当前需要平台支持动作，不能用无信息重试代替修复。
+
+## 外部提交绑定与实际审核（2026-10-16）
+
+起点 `619ed202f50c3af11197df0d15d3ae27aaccdb5a`，同一开发分支。按用户授权使用已有外部执行协议：当前外层云端 Codex 读取固定任务包并生成审核，控制器负责导入和发布；不是重新运行嵌套 CLI，不声称平台问题已修复。
+
+修复外部提交缺口：CLI `task-submit` 必填 `--expected-attempt N`，N 必须是生成时任务包中的 attempts。传入原有事务内尝试校验，在幂等返回前拒绝过期尝试，即使输入版本相同也拒绝。新增正整数校验；受信任 Python API 保留原可选参数兼容性。文档同步说明旧 CLI 调用需加参数；该约定不构成执行者身份认证，不能把旧结果改标新次数。
+
+实际验证，日志 `.local-validation/external-submit/`（忽略目录，不上传工程资料）：
+
+- 从未修改 HEAD 的 git archive 在临时目录运行 `python -m unittest discover -s tests -v`：exit=0，145 项/143 通过/2 Windows 跳过，8.465秒，`immutable-baseline.log`。最初工作区 baseline.log 运行期间发生编辑，不作为隔离基线证据。
+- 最终同一全量命令：exit=0，146 项/144 通过/2 Windows 跳过，12.808秒，`final.log`。覆盖缺参数、非法次数、同输入版本的旧尝试、正确提交/幂等/发布。`git diff --check` exit=0。
+- 原任务 `e8817187f6ef4170a03d65c39dd70e6e` 接续前 handoff 核实输入/当前版本/控制一致；`task-resume --note ...` → `task-claim` → `task-prepare` 均 exit=0，保留累计并得到 attempt-2。
+- 当前外层 Codex 实际读取 packet.json 全文及 schema；正文仅“港口在落日前开放。船在日落前抵达港口。”，Canon 四类状态为空。审核指出两者均在日落前不能推出二者先后，未虚构因果冲突；重复时间表达仅为轻微阅读观察。人物/情感/世界信息不足仍保留未决，未写正文或修改状态。
+- 实际结果位于原任务 `attempt-2/external-result.json`；`task-submit TASK RESULT --expected-attempt 2`、`task-publish TASK`、`assess cloud-fixture`、`handoff TASK`、`audit` 均 exit=0；输出分别为 external-submit 下同名 JSON。任务 completed/attempts=2；input/output revision 均 `c56993708c30d505c9386af3b5c4cbef7d01fe4968bb75ad1b0cdf63d3fa06e1`；result_hash=`ce6c6e68903c4f49f0eef75ab64f1ebe9e4e93e6088bf15af5980dbeb36f392a`。
+- handoff 输入/输出校验均 true，audit database=ok、snapshots_verified=2、events=12。SQLite 只读回读仍有 attempt=1 的 task.stopped/tool_failure 和 attempt=2 的 claimed/submitted/published，历史没有清除。
+- assess can_accept=false；实际 `accept cloud-fixture` exit=1，按未决信息正确拒绝（`accept-rejected.json`）。这是预期门禁验证，不能宣称作品被接受。
+
+证据分类：测试为合成自动回归；本次为真实外层模型阅读合成工程输入并导入的结果，不是测试桩，也不是嵌套适配器成功、独立会话复核或真人阅读反馈。用户授权的执行者切换已在 task.resumed 原始事件记录。
+
+累计：既有工程失败4次/夹具返修4次、修复前回归失败1次（5子场景）、补丁上下文失败2次保持；本轮新增非预期测试失败0。原任务累计2次执行：嵌套失败1次、外层完成1次；嵌套重试0，初始化失败2次、doctor失败1次保持。首次失败不清零。
+
+剩余：嵌套 installation_id EROFS/推理网络需平台修复；外部执行不受该初始化问题阻塞。研究工具实际链路、独立复核及作品/方法效果尚未通过；后两者需相应真实材料与作者决定。当前未引入付费工具、迁移认证或改权限。下一必要验证应围绕外部协议研究来源与审核事实区分，不能无限追加便利命令替代验收。

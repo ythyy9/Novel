@@ -188,3 +188,5 @@
 模型只交付上述结果对象。`decision`、`reference-import`、`feedback`、`accept`、停止恢复、取消、回滚以及规则调整属于控制器操作，必须基于对应作者授权或已授权的运行职责；协议中不存在让模型自行声明“作者同意”的字段。
 
 本地 CLI 没有身份认证，因此不能把调用某条命令当作人类确实亲自操作的证明。SQLite 事件记录动作、任务与版本，作者原文和实际来源提供内容依据；流程验收、模型运行成功、来源核实和作者文学评价应分别报告。
+
+外部 CLI 提交必须提供 `task-submit TASK RESULT --expected-attempt N`，N 来自生成结果时的任务包 `task.attempts`。它不是结果 JSON 新字段；控制器在同一提交事务中拒绝不匹配的尝试。受信任 Python 调用仍可直接调用 Engine.submit；外部执行应显式传入 expected_attempt。此机制防止误接收旧尝试结果，不证明调用者没有谎报次数。

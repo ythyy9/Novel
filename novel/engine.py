@@ -374,6 +374,8 @@ class Engine:
         return self.task(task_id)
 
     def submit(self, task_id, result, *, expected_attempt=None):
+        if expected_attempt is not None and (type(expected_attempt) is not int or expected_attempt < 1):
+            raise EngineError("expected_attempt must be a positive integer")
         encoded = canonical(result)
         if len(encoded.encode("utf-8")) > self.limits()["max_result_bytes"]:
             raise EngineError("Result exceeds configured size limit")

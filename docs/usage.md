@@ -111,9 +111,11 @@ python -m novel task-create $bookId research --instruction-file 'C:\path\researc
 ```powershell
 python -m novel task-claim $taskId
 python -m novel task-prepare $taskId
-python -m novel task-submit $taskId 'C:\path\result.json'
+python -m novel task-submit $taskId 'C:\path\result.json' --expected-attempt 1
 python -m novel task-publish $taskId
 ```
+
+`--expected-attempt` 为必填项，必须使用生成该结果时任务包内 `task.attempts` 的值（示例 1 仅适用于第一次领取）。恢复后须重新读取新任务包并生成本次结果，不能把旧结果的参数改成当前次数来绕过校验。旧命令省略此参数会报用法错误；正整数才合法。控制器会在事务中比较次数，过期结果不能提交，即使输入版本未变化。该绑定依赖操作员正确传递来源，不是执行者身份认证。
 
 这条路径与 `task-run` 二选一，不要再次领取已经 `running` 的任务。`task-prepare` 只能用于已领取任务。结果协议见 [协议说明](protocol.md)，相同结果重复提交、已完成任务重复发布是幂等操作；同一任务不能换一份不同结果覆盖原提交。
 
