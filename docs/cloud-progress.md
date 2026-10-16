@@ -346,3 +346,10 @@ v2新增完整选定任务事件并纳入状态哈希；v1仍可读取但不能a
 本提交只增加拒绝时的原路径与已解析比较路径诊断，仍只解析各一次、保留原拒绝条件与lstat/reparse检查；另在真实Windows重复原receive/claim场景50轮取得证据。Linux定向7项/6通过/1 Windows诊断跳过，exit0，spelling-diagnostic.log；不称作真实Windows验证。未调用模型、未改网络权限或作品。
 
 本次Linux全量 `python -m unittest discover -s tests -v` exit=0，188项/185通过/3 Windows跳过，日志diagnostic-full.log；git diff --check exit=0。下一步按新诊断提交分别读取push和PR CI，取得Windows真实路径后再决定修复，不重跑原失败冒充关闭。
+
+
+诊断提交5441d7b6793ac87e7509aa8c8f403e28985197b3已推送。准确SHA的push run38890969621和PR run38890975561均attempt1/completed/success，各四组全部通过；四个Windows job共200轮原并发场景通过，未取得新失败路径。另独立读取Windows3.13 job116940126886（188项/48.852秒/OK）及Windows3.11 job116940107995（188项/37.367秒/OK）原日志，确认新增50轮测试实际执行而非跳过。完整运行/job索引在隔离副本`.local-validation/path-resolution/ci-5441d7b.json`。这些结果不关闭原b870失败；当前提交是诊断增强，不是已验证根因修复。
+
+父端补充原失败解释器为3.13.16，正在独立Windows以该版本和3.11.9作有界复现；云端已回查[官方v3.13.16 ntpath.py](https://raw.githubusercontent.com/python/cpython/v3.13.16/Lib/ntpath.py)，未把nonstrict缺失路径的候选机制当成已确认原因。需要失败时原路径与resolve返回值的关联证据；当前不采用未经复现的最近祖先解析替换，不扩大容错、不修改断言、不额外制造模型任务。真实d71源码目录仍干净，验收data仍55事件、两条诊断文件哈希不变。
+
+本机复验入口（隔离源码副本使用5441d7b或其仅文档后继，勿更新真实交接控制器）：`python -m unittest discover -s tests -p test_path_race.py -v`。Windows专属项含50轮原receive/claim竞态，失败保留具体比较路径；Linux则明确跳过。全量入口保持`python -m unittest discover -s tests -v`。后续在捕获真实错误路径后补确定性回归，再做最小产品修复；没有因暂未复现宣称解决。
