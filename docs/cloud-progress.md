@@ -307,3 +307,17 @@ v2新增完整选定任务事件并纳入状态哈希；v1仍可读取但不能a
 本轮非预期测试失败0；已有工程失败4/夹具返修4、预期修复前失败1、补丁上下文失败2、Windows失败job1/编码修复1、调度UNKNOWN累计4及模型/初始化/doctor次数保持。未运行嵌套模型、未访问本机、未上传私人作品或新建存储/凭据。
 
 已保存可执行真实接入清单docs/two-endpoint-checklist.md。当前闭环到此停止功能扩张：下一步依赖真实第二版/修改依据、首次共同基线来源及获准双向传输目的地/资料范围。现有历史第一版不能自动重建本地SQLite或代替第二版；真实接入未完成，不能将本轮合成证据写成已同步。首个已验证共同基线仍需在获准资料范围内建立，Git只同步代码。
+
+## SQLite sidecar消失竞态最小修复（2026-10-16）
+
+起点baccaa87aefbd7e51a040cb1c9871e2b09d7b2e1，工作区干净。连接器独立读取push run38860882368及job116842648168日志：该SHA的push运行Windows3.11在test_receive_serializes_with_claim→Engine.__init__→_db→checked_path的lstat收到novel.sqlite3-shm FileNotFoundError/WinError2，181项中1错误、exit=1；其余push三组success。此前PR run38860887744四组success仍为真，但不能概括为该提交所有CI都通过。没有重跑旧提交或只选择绿的一套。
+
+确定性回归在lstat前删除实际存在的WAL/SHM/journal文件。使用git archive HEAD隔离副本并加入新测试，运行 `python -m unittest discover -s tests -p test_path_race.py -k disappearing -v`：exit=1，1项内3个子场景FileNotFoundError（.local-validation/sidecar-race/immutable-before.log）；包装脚本exit=0表示成功确认预期失败。最初工作区before.log与编辑重叠，不作为修复前证据。原CI没有记录具体删除者，SQLite连接关闭删除sidecar是与复现相符的解释，不声称日志直接证明了哪个连接。
+
+最小源码修复：去掉exists/is_symlink再lstat的重复检查窗口，直接lstat；仅FileNotFoundError按原有“缺失组件允许创建”的语义处理。实际读到符号链接或FILE_ATTRIBUTE_REPARSE_POINT仍拒绝；PermissionError/NotADirectoryError/其他OSError仍抛出。未跳过断言、未放宽路径逃逸或junction保护；此修复不声称提供抵御同账户恶意路径替换的OS隔离。
+
+实际后验证：定向test_path_race.py exit=0，4项/0.304秒（targeted.log），含现存/悬空符号链接元数据、父级reparse、其他错误和缺失叶节点；既有真实Windows junction测试未改。全量 `python -m unittest discover -s tests -v` exit=0，185项/183通过/2 Windows专属跳过，28.344秒（full.log）。以120秒上限运行50轮接收认领并发+50轮三种sidecar消失，100项/9.437秒/exit=0（repeated.log）。后两者并行运行，临时数据目录独立。本机重复验证为Linux；不能冒称Windows压力运行。`git diff --check` exit=0。
+
+累计新增已核实Windows CI失败job1（此类累计2）、该竞态实现修复1；新增预期修复前回归失败运行1（3子场景，与此前1次/5子场景合计2次）。修复后非预期测试失败0。工程失败4/夹具返修4、补丁上下文失败2、调度UNKNOWN4及模型/初始化/doctor历史仍保留；不清零。未访问真实V2、不运行嵌套模型、不新增权限。
+
+本轮CI使用通用GitHub actions/runs按准确head_sha读取push与pull_request两套，再分别读取四个jobs；不再只依赖默认过滤PR的fetch_commit_workflow_runs。推送后结果待回读，日志索引保存于同一sidecar-race目录。仍需真实资料/传输授权的边界不变，本次不扩功能。

@@ -55,10 +55,15 @@ def checked_path(root: Path, relative: str) -> Path:
     for part in (None, *parts):
         if part is not None:
             path = path / part
-        if path.exists() or path.is_symlink():
+        try:
             info = path.lstat()
-            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
-                raise EngineError(f"Reparse points are not supported: {path}")
+        except FileNotFoundError:
+            # Missing components are allowed for creation. SQLite may also
+            # remove WAL/SHM/journal files while another connection closes.
+            # Inspect directly: exists() followed by lstat() races that removal.
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+            raise EngineError(f"Reparse points are not supported: {path}")
     def comparison_path(value):
         resolved = str(value.resolve())
         # On Windows, realpath may retain \\?\ when a missing parent is created
