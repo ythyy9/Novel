@@ -110,7 +110,7 @@ DEFAULT_LIMITS = {"schema_version": 1, "billing": "chatgpt_subscription", "max_a
                   "max_no_progress": 2, "max_result_bytes": 2_000_000}
 EMPTY_STATE = {"knowledge": [], "characters": [], "world": [], "offstage": []}
 STOP_REASONS = {"decision", "quota", "no_progress", "tool_failure", "authorization"}
-KINDS = {"write", "revise", "research", "review"}
+KINDS = {"write", "revise", "research", "review", "correct_records"}
 ACTIVE = ("running", "submitted", "blocked", "exhausted")
 
 DDL = """
@@ -366,7 +366,7 @@ class Engine:
             rows = db.execute("SELECT id FROM tasks WHERE (? IS NULL OR book_id=?) ORDER BY created_at", (book_id, book_id)).fetchall()
         return [self.task(row[0]) for row in rows]
 
-    def enqueue(self, book_id, kind, instruction):
+    def enqueue(self, book_id, kind, instruction, *, task_id=None):
         if kind not in KINDS or not isinstance(instruction, str) or not instruction.strip():
             raise EngineError("Valid task kind and instruction required")
         with self._db(True) as db:
@@ -375,7 +375,7 @@ class Engine:
             self._read_snapshot(book_id, version["id"])
             if kind == "write" and version["status"] != "accepted":
                 raise EngineError("Accept the current chapter/version before writing the next; use revise for repairs")
-            task_id = uuid.uuid4().hex
+            task_id = identifier(task_id) if task_id is not None else uuid.uuid4().hex
             timestamp = now()
             db.execute("""INSERT INTO tasks(id,book_id,kind,instruction,input_revision,control_hash,status,created_at,updated_at)
                           VALUES (?,?,?,?,?,?,'queued',?,?)""", (task_id, book_id, kind, instruction, version["id"], self._controls(), timestamp, timestamp))
@@ -479,10 +479,11 @@ class Engine:
         if "canon/state.json" in changes:
             previous = json.loads(files["canon/state.json"])
             updated = json.loads(changes["canon/state.json"])
-            old_ids = {r["id"] for r in previous["knowledge"]}
-            new_ids = {r["id"] for r in updated["knowledge"]}
-            if not old_ids <= new_ids:
-                raise EngineError("Keep stable knowledge IDs and history; correct existing records rather than deleting their identity")
+            for section in EMPTY_STATE:
+                old_ids = {r["id"] for r in previous[section]}
+                new_ids = {r["id"] for r in updated[section]}
+                if not old_ids <= new_ids:
+                    raise EngineError(f"Keep stable {section} IDs and history; correct existing records rather than deleting their identity")
 
     @staticmethod
     def _check_adoption(files, result):
@@ -903,5 +904,9 @@ class Engine:
                 elif task["status"] == "completed":
                     raise EngineError("Completed task has no output revision")
             events = db.execute("SELECT count(*) FROM events").fetchone()[0]
-        return {"database": "ok", "snapshots_verified": len(versions), "events": events,
-                "protection": "validated controller operations; not OS isolation"}
+        result = {"database": "ok", "snapshots_verified": len(versions), "events": events,
+                  "protection": "validated controller operations; not OS isolation"}
+        if checked_path(self.root, "runtime/dot").exists():
+            from .dot_audit import audit_dot
+            result["dot"] = audit_dot(self)
+        return result

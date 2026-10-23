@@ -1,0 +1,3 @@
+# Optional Hub integration tests; match the verified deployment interpreter.
+fastapi==0.141.1
+httpx==0.28.1

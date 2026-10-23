@@ -248,7 +248,7 @@ def validate_result(result: dict, task: dict, files: dict[str, str]) -> None:
     _strings(result["unresolved"], "result.unresolved")
     _text(result["state_notes"], "result.state_notes", nonempty=False)
     kind = _text(task.get("kind"), "task.kind")
-    if kind not in {"write", "revise", "research", "review"}:
+    if kind not in {"write", "revise", "research", "review", "correct_records"}:
         _fail("task kind is invalid")
     changes: dict[str, str] = {}
     for change in _list(result["changes"], "result.changes"):
@@ -259,6 +259,16 @@ def validate_result(result: dict, task: dict, files: dict[str, str]) -> None:
         changes[path] = _text(change["content"], "change.content")
     merged = {**files, **changes}
     affected = _paths(result["affected_paths"], "result.affected_paths", merged)
+    from .scope_correction import validate_scope_correction
+    if validate_scope_correction(result, task, files, changes):
+        _text(result["state_notes"], "result.state_notes")
+        validate_state(_json(files["canon/state.json"], "canon/state.json"), merged)
+        return
+    from .record_correction import validate_record_correction
+    if validate_record_correction(result, task, files, changes):
+        _text(result["state_notes"], "result.state_notes")
+        validate_state(_json(changes["canon/state.json"], "canon/state.json"), merged)
+        return
     if kind == "review":
         if changes:
             _fail("review tasks cannot change book files")
@@ -266,6 +276,13 @@ def validate_result(result: dict, task: dict, files: dict[str, str]) -> None:
         return
     if result["review"] is not None:
         _fail("only review tasks may submit review records")
+    if kind == "correct_records":
+        from .corrections import validate_corrections
+        validate_corrections(result, files, changes)
+        return
+    from .naming_append import validate_naming_append
+    if validate_naming_append(result, task, files, changes):
+        return
     if kind in {"write", "revise"}:
         if any(path.startswith("research/") for path in changes):
             _fail("write/revise cannot bypass the research record protocol")

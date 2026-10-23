@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>逐章阅读 · 失址之城</title><link rel="stylesheet" href="reader.css"><script src="reader.js" defer></script></head>
+<body>
+<a class="skip" href="#manuscript">跳到正文</a>
+<aside id="sidebar">
+  <div class="shelf-label">作者阅稿室 <span class="small-mark" aria-hidden="true">阅</span></div>
+  <h1 id="book-title">正在读取作品…</h1>
+  <p class="shelf-note">把故事，一章一章读下去。</p>
+  <div class="catalog-label"><span>章节目录</span><span id="chapter-count">—</span></div>
+  <nav id="catalog" aria-label="章节目录"></nav>
+  <div class="shelf-footer">你的阅读意见，由你决定。<br>流程通过与作者认可分别记录。</div>
+</aside>
+<div class="reading-room">
+  <header class="toolbar">
+    <button id="menu" class="text-button mobile-only" aria-expanded="false" aria-controls="sidebar">目录</button>
+    <div class="source"><span class="source-dot" aria-hidden="true"></span><span id="source-label">读取正式稿</span></div>
+    <div class="tools"><button id="smaller" class="text-button" aria-label="缩小正文字号">A−</button><button id="larger" class="text-button" aria-label="放大正文字号">A＋</button><button id="refresh" class="refresh-button">刷新版本 <span aria-hidden="true">↻</span></button></div>
+  </header>
+  <main id="main">
+    <div id="message" role="status" aria-live="polite" hidden></div><a id="login-link" href="/" hidden>打开服务器登录页 →</a>
+    <div class="version-line"><span id="version">—</span><span id="verified-time"></span></div>
+    <div class="chapter-top"><span id="position">准备阅读</span><span id="word-count"></span></div>
+    <article id="manuscript" tabindex="-1" aria-label="章节正文" aria-busy="true"><p class="placeholder">正在载入章节…</p></article>
+    <div class="chapter-bottom"><span class="end-mark" aria-hidden="true">◇</span><span id="end-label">本章完</span></div>
+    <nav class="page-turn" aria-label="翻章"><button id="previous" disabled><span aria-hidden="true">←</span><span><small>上一章</small><strong id="previous-title">已经是第一章</strong></span></button><button id="next" disabled><span><small>下一章</small><strong id="next-title">已经是最新一章</strong></span><span aria-hidden="true">→</span></button></nav>
+    <p class="reading-tip">阅读位置保存在这台设备 · Alt + ← / → 切换章节</p>
+  </main>
+  <footer class="reading-footer"><span id="footer-position">—</span><button id="top" class="text-button">回到章首 ↑</button></footer>
+</div>
+</body></html>

@@ -6,9 +6,11 @@
 
 ## 当前状态
 
-**第一版本地命令行系统已实现。** Python 3.11+ 标准库提供 SQLite 任务队列、不可变作品快照、六类知识记录、版本绑定审核、研究记录、停止与接续、返修回滚和方法对照。Codex 通过现有 ChatGPT 登录执行，其他执行者可使用同一 JSON 协议交付结果。
+**当前创作由 Dot 通过固定任务包执行，工程维护独立进行。** Python 3.11+ 标准库提供 SQLite 队列、不可变作品快照、六类知识记录、版本绑定审核、分批阅读 checkpoint、状态增量、候选修正和恢复审计。阅读器提供只读章节访问。
 
-当前是可运行的工程初版，已完成工程样本、真实双端接续和参考资料流程验证；正式作品在本地推进，当前作者阅读与目标读者反馈仍待继续，具体范围见[真实双端验收记录](docs/local-cloud-handoff-2026-10-16.md)。这些结果不等于文学质量、完整 OS 权限隔离或长期大规模运行已获验证。原始架构文档保持原文，实际能力与限制以本页、使用说明和验收记录为准。
+程序内模型调用保持暂停：不要运行 `task-run`、联网 `reference-add`、`reference-use`，也不要通过会自动刷新绑定参考书的 CLI `task-create` 创建当前创作任务。线上当前版本与活动任务应通过 `novel_work_status` 回读；本仓库不保存私有正文、作者原话、上传或 checkpoint。当前入口和恢复方法见[运行与恢复](docs/runtime-and-recovery.md)。工程检查和阶段门禁不等于作者或读者的文学认可。
+
+真实双端接续与工程样本的范围见[真实双端验收记录](docs/local-cloud-handoff-2026-10-16.md)，不替代作者或目标读者评价。
 
 ## 从这里开始
 
@@ -26,6 +28,8 @@
 | [参考资料自动流程](docs/reference-library.md) | 系列、番外和附录检索，原件保留、完整性检查、全部阅读分析及缺口接续 |
 | [参考作品分析](docs/references/the-invisible-library-analysis.md) | 23 章阅读形成的叙事、人物与世界观分析，含证据定位及迁移边界 |
 | [候选方法卡](lessons/candidates/the-invisible-library.md) | 九项待验证方法；未自动修改运行规则，提炼时尚未开始新小说 |
+| [首轮候选回放对照](docs/evaluations/reference-methods-replay-2026-10-14.md) | C06/C07/C09 与已有分析比较；复核粒度有增量，未证明额外纠错，未启用规则 |
+| [运行与恢复](docs/runtime-and-recovery.md) | 当前 Dot 入口、分页、原任务恢复、完整备份审计和发布基线 |
 | [双端交接](docs/offline-exchange.md) | 离线包、开工门禁、显式采用及双方基线确认 |
 | [合并前审阅](docs/pr1-review-2026-10-16.md) | 执行生命周期修复、回归范围与保留的验收边界 |
 
@@ -34,17 +38,18 @@
 在仓库根目录使用 Python 3.11 或更新版本，不需要安装第三方 Python 包：
 
 ```powershell
-python -m novel init
-python -m novel doctor
 python -m novel --help
+python -m pip install -r requirements-test.txt
 python -m unittest discover -s tests -v
 ```
 
-`init` 只初始化本地资料和队列。`task-run` 每次执行一个创作任务；`reference-add`、`reference-use` 及创建绑定参考资料的任务时，会按预算调用 Codex 检索并分析参考资料。`reference-add --offline` 只导入和检查结构。不自动购买额度或绕过失败状态重试。代码与项目资料可分开，通过 `--root <资料目录>` 指定资料位置。
+测试依赖只用于 Hub 集成用例；基础控制器仍不需要第三方包。`init` 仅用于明确选择的新资料目录，不是接续正式作品的步骤。所有资料操作显式使用 `--root <资料目录>`；当前创作使用已登记的 Dot 工作区。
 
 `task-publish` 更新本地候选版本，`accept` 执行阶段性审核门禁；二者均不上传 GitHub。正文、运行数据和模型日志默认不进入 Git。新会话可以从 `tasks`、`handoff`、`read` 和 `search` 恢复工作。
 
-目前以命令行供 Agent 或操作员调用，不提供独立网页。本地作品、作者反馈和运行数据继续留在各自资料目录；本次工程发布不自动同步或上传这些内容。
+`novel.reader` 提供本地只读阅读页，`novel.reader_hub` 可集成到已有 Hub 登录会话。私有作品、作者反馈和运行数据留在登记的资料根；工程发布不包含这些内容。
+
+接续时先读取当前状态、原任务的固定包和阅读进度，再沿原任务继续。不要把源码目录中的旧本地数据当作线上当前作品，也不要重建活动任务。
 
 ## 架构概要
 
