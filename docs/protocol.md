@@ -2,11 +2,13 @@
 
 协议由 [结果 Schema](../schemas/result.schema.json)、`novel/records.py` 和 `novel/engine.py` 共同实现。Schema 约束输出形状；Python 校验器还检查路径、精确引用、输入版本、任务状态、来源边界和发布条件。模型声称完成不等于提交或发布成功。
 
+大资料包可经 Dot 的[有界读取与状态增量传输](context-protocol.md)分批处理：固定包原件不变，逐批全文阅读、保存进度，再展开成本文的完整九字段结果执行原校验。传输 checkpoint 不是作品提交，增量不是跳过完整状态或审核的许可。
+
 以下 JSON 是结构示例，人物、正文和编号均为示意，不能当作首部作品的作者决定。实际结果必须使用对应任务的真实编号和版本。
 
 ## 任务和版本
 
-任务种类为 `write`、`revise`、`research`、`review`。创建时固定 `id`、`book_id`、`kind`、`instruction`、`input_revision`、`control_hash`，并记录创建时间。执行状态、`attempts`、`no_progress`、`stop_reason`、`detail`、结果与哈希由控制器维护，模型不能自行更新。
+任务种类为 `write`、`revise`、`correct_records`、`research`、`review`。创建时固定 `id`、`book_id`、`kind`、`instruction`、`input_revision`、`control_hash`，并记录创建时间。执行状态、`attempts`、`no_progress`、`stop_reason`、`detail`、结果与哈希由控制器维护，模型不能自行更新。
 
 正常转换为 `queued → running → submitted → completed`。领取时累计 `attempts`；停止为 `blocked`，达到次数限制后为 `exhausted`；有说明的显式取消为 `cancelled`。`blocked` 解决后可以回到 `queued`，不清零次数。当前版本或规则变化会使旧任务失效，须保留记录并显式接续。
 
@@ -55,10 +57,21 @@
 | 种类 | 结果要求 |
 | --- | --- |
 | `write` / `revise` | 同时提交至少一个 `manuscript/*.md` 和 `canon/state.json`；所有改动正文都须列入 `affected_paths`；不得改 `research/` 或另建其他 `canon/` 状态文件 |
+| `correct_records` | 新增一份 `revisions/correction-*.json`，记录有原文证据的已有记录更正或旧修订说明的追加注释；有状态更正时同时提交精确对应的 `canon/state.json`，不要求改正文 |
 | `research` | 只新增一个或多个 `research/*.json`；不能覆盖已有研究记录，也不能改正文或状态 |
 | `review` | `changes` 必须为空，只提交审核记录 |
 
-所有任务都不能借结果写入 `decisions/` 或 `reference/`；这些内容只经明确授权的操作员导入。结果没有删除文件操作。`write`/`revise` 可在允许路径内补充候选或返修说明，但不能删掉既有知识记录的 `id`；需要纠正时保留身份并修改记录，历史版本保存旧内容。
+所有任务都不能借结果写入 `decisions/` 或 `reference/`；这些内容只经明确授权的操作员导入。结果没有删除文件操作。`write`/`revise` 可在允许路径内补充候选或返修说明，但不能删掉 `knowledge`、`characters`、`world`、`offstage` 中的既有 `id`；需要纠正时保留身份并修改记录，历史版本保存旧内容。完整状态和增量提交遵守同一身份保留约束。
+
+`correct_records` 的固定包另带 `record-correction-guide.md`。更正说明格式为
+`{"format":"novel-record-correction-v1","reason":"原因","records":[],"annotations":[]}`，
+至少包含一项更正。`records` 每项含 `section`、`id`、完整 `before`/`after`、`reason`、`evidence`；
+只允许改变已有记录的 `statement` 与 `sources`，保留原来源、顺序、身份、信息类别、持有人及名称。
+`annotations` 每项含原有修订文件的 `path`、原文 `quote`、追加的 `correction` 和 `evidence`；
+原说明不被覆盖。所有 evidence 必须精确引用固定输入，不得用本次新说明给自身作证。
+变化文件及被注释的原文件均须列入 `affected_paths`。状态可用既有 `state_delta` 传输，
+展开后必须与说明中逐项登记的更正完全一致。发布生成待审核新版本，独立复核和验收门禁保持；
+既有任务不改种类、不重建，历史单任务恢复补丁继续保留。
 
 路径使用 `/`，相对于作品根目录，允许的首层目录是 `manuscript`、`canon`、`possibilities`、`research`、`reference`、`decisions`、`revisions`，扩展名为 `.md` 或 `.json`。拒绝绝对路径、反斜线、`.`/`..`、隐藏路径组件、Windows 保留名、非法字符、大小写冲突与文件/目录冲突。`reviews/` 不作为模型写入目录，审核记录存入数据库。
 

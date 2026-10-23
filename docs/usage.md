@@ -1,6 +1,12 @@
-# 第一版使用说明
+# 使用说明
 
-这是本地命令行系统：作品文件、任务、停止原因、版本和反馈保存在自己的资料目录中。第一本作品的题材、书名、人物和设定仍需作者提供；以下书籍标识、任务编号和路径都是操作示意，不代表已经选定作品。
+## 当前执行入口
+
+正式创作使用已登记工作区的 Dot 工具，固定包、完整分批阅读、独立审核和阶段门禁保持。程序内模型调用仍暂停：本文后面的 `task-run`、联网 `reference-add`、`reference-use` 和会自动刷新参考的 CLI `task-create` 是历史接口说明，不能据此用于当前作品。不要用默认根目录或重新 `init` 接续线上任务。
+
+先调用 `novel_work_status`：它始终列出全部活动任务，默认仅附最近10项历史。`tasks_complete=false` 时使用 `next_before` 作为下次 `before` 分页；完整任务指令由 `novel_work_read` 读取 `task-info.json`，按返回偏移继续。当前恢复、备份和发布流程见[运行与恢复](runtime-and-recovery.md)。
+
+控制器同时保留本地 CLI。作品文件、任务、停止原因、版本和反馈保存在明确选择的资料目录中。以下书籍标识、任务编号和路径是操作示意，不代表当前正式作品的真实记录。
 
 ## 启动与资料目录
 
@@ -46,7 +52,7 @@ python -m novel files $bookId
 
 空作品的初始版本，以及尚无正文时的资料导入版本，标为 `accepted`，用于允许启动第一章；这不是作品质量已经通过验收。
 
-## 写作、审核和阶段通过
+## 历史 CLI 写作、审核和阶段通过接口
 
 每次显式调用只运行一次尝试。创建任务会固定当前输入版本及 `policies/`、`methods/` 的内容哈希；准备任务包时将实际原则与方法放入 `policies_and_methods`，供执行者在运行边界内遵守。
 
@@ -198,11 +204,12 @@ python -m novel excerpt BOOK manuscript/001.md --revision REVISION --start-line 
 | `books/<book-id>/versions/<revision>/` | 不可直接修改的完整内容快照，内含 `manifest.json` 和正文、状态、来源等文件 |
 | `runtime/novel.sqlite3` | 当前版本指针、队列、累计尝试、提交结果、审核、反馈、事件；使用 SQLite WAL |
 | `runtime/tasks/<task-id>/attempt-<n>/` | 固定任务包、Schema、prompt、运行标记、Codex JSONL、错误日志和模型结果 |
+| `runtime/dot/` | Dot 固定包、gateway.sqlite3、原请求回执、上传、已送达范围和阅读 checkpoint；必须成套备份 |
 | `policies/`、`methods/` | 运行约束和方法文件；共同参与任务控制哈希，并导出到模型任务包 |
 
 不要直接编辑版本快照；内容哈希会检出改动。常规修改通过任务结果或明确的作者录入命令产生新版本。SQLite 事务和先写快照后切换指针保护本地一致性，不能抵御同一用户账户故意改写控制程序或全部存储。
 
-备份应在全部写入者停止后，成套保留 **`books/`、`runtime/`、`policies/`、`methods/` 和实际存在的 `evaluations/experiments/`**；同时保存对应源码版本。若存在 SQLite 的 `-wal`、`-shm` 文件，不要只复制主数据库后遗漏它们。恢复到独立目录后运行 `audit`，并对实际实验执行 `eval-summary`，再接续。仅备份 Git 仓库或仅复制正文都不能恢复完整工作状态。
+静态复制备份应在全部写入者停止后，成套保留 **`books/`、`runtime/`、`policies/`、`methods/` 和实际存在的 `evaluations/experiments/`**；同时保存对应源码版本。若存在 SQLite 的 `-wal`、`-shm` 文件，不要只复制主数据库后遗漏它们。恢复到独立目录后运行 `audit`：存在 Dot 资料时也校验 gateway、任务包、上传回执、checkpoint 和完整送达范围；合法未完成上传及旧错误保持。运行中的系统应由操作员取得一致数据库备份及其引用的不可变文件，不应逐文件复制活动数据库。仅备份 Git 或仅复制正文不能恢复完整工作状态。
 
 本仓库的 `.gitignore` 忽略 `books/`、`runtime/`、本地验收目录和常见凭据文件，因此提交代码不会自动备份私有作品或模型日志。`policies/`、`methods/` 可被 Git 跟踪，勿在其中放凭据或不准备提交的私密原文。改用外部 `--root` 时，资料目录的 Git 规则由那个目录自行管理。
 
