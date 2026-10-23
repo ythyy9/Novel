@@ -27,6 +27,7 @@ import urllib.request
 import zipfile
 
 LIMIT = 8_000_000
+VALIDATION_SECONDS = 600
 NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
 
 
@@ -176,10 +177,21 @@ class Maintenance:
                 dest = target / path
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(raw)
+            # These are operator-owned running components, not caller changes.
+            # Keep the release's auxiliary snapshot aligned with the real service
+            # instead of copying a stale copy from a previous API release.
+            managed = {}
+            for name in ("maintenance.py", "api_runner.py"):
+                actual = self.base / name
+                if actual.is_file() and not actual.is_symlink():
+                    relative = "ops/" + name
+                    (target / "ops").mkdir(exist_ok=True)
+                    shutil.copyfile(actual, target / relative)
+                    managed[relative] = sha(actual.read_bytes())
             receipt = {"id": request_id, "state": "staged", "manifest_sha256": digest,
                        "base_sha256": data["base_sha256"], "source_sha256": sha(encoded(inventory(target))),
                        "changes": {p: sha(raw) for p, raw in files.items()}, "reason": data["reason"],
-                       "source": str(target), "created_at": time.time()}
+                       "source": str(target), "created_at": time.time(), "managed_source_snapshots": managed}
             save(folder / "receipt.json", receipt)
             return receipt
 
@@ -204,13 +216,13 @@ class Maintenance:
                     "--unit=novel-check-" + request_id, "--working-directory=" + str(check)]
             for prop in ("User=novel-check", "Group=novel-check", "PrivateNetwork=yes",
                          "ProtectSystem=strict", "ProtectHome=yes", "NoNewPrivileges=yes",
-                         "PrivateTmp=yes", "MemoryMax=256M", "CPUQuota=50%", "TasksMax=128", "RuntimeMaxSec=300",
+                         "PrivateTmp=yes", "MemoryMax=256M", "CPUQuota=50%", "TasksMax=128", f"RuntimeMaxSec={VALIDATION_SECONDS}",
                          "ReadWritePaths=" + str(check),
                          "InaccessiblePaths=" + self.config["book_root"] + " /etc/agent-hub /var/lib/agent-hub /etc/novel-ops"):
                 args += ["--property=" + prop]
             args += ["/usr/bin/env", "-i", "PATH=/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE=1",
                      self.config["python"], "-B", "-m", "unittest", "discover", "-s", "tests", "-v"]
-            result = subprocess.run(args, timeout=330, capture_output=True, text=True)
+            result = subprocess.run(args, timeout=VALIDATION_SECONDS + 30, capture_output=True, text=True)
             (path.parent / "tests.log").write_text(result.stdout + result.stderr)
             # Tests run on a copy. Recheck the root-owned deploy artifact.
             if sha(encoded(inventory(Path(receipt["source"])))) != receipt["source_sha256"]:

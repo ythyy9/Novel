@@ -24,9 +24,14 @@ The token authorizes source read and bounded release operations only.
    Only Python files directly under novel/ and tests/test_*.py are allowed.
    No deletes, shell commands, arbitrary destinations or business-data paths.
    The same ID with identical parameters returns the original receipt.
+   The service refreshes the release's auxiliary snapshots of its operator-owned
+   maintenance.py and api_runner.py and records their hashes in the receipt.
+   Callers still cannot edit those files or change the running maintenance service.
 5. POST `/releases/<id>/validate` with `{}`. This returns 202. GET the release
    receipt with bounded waits until `validated` or `failed`. Tests run in a
    disposable Linux service without network or access to the live book root.
+   The expanded full suite has a bounded 600-second runtime; CPU, memory,
+   network isolation and all test assertions remain enforced.
 6. After checking the diff stays within the standing authorization, POST
    `/releases/<id>/deploy` with `{}`. Deployment starts the other API slot,
    verifies its identity and authentication, and gracefully switches the proxy.

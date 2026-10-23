@@ -80,6 +80,32 @@ class ManifestTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "validation"):
                 service.deploy("example")
 
+    def test_staging_snapshots_actual_managed_service_without_accepting_caller_ops(self):
+        with tempfile.TemporaryDirectory(prefix=".novel-ops-test-", dir=Path(__file__).resolve().parents[1]) as tmp:
+            base = Path(tmp)
+            (base / "releases").mkdir()
+            source = base / "seed"
+            (source / "novel").mkdir(parents=True)
+            (source / "ops").mkdir()
+            (source / "novel/example.py").write_text("VALUE = 0\n")
+            (source / "ops/maintenance.py").write_text("OLD_SNAPSHOT = True\n")
+            (base / "maintenance.py").write_text("ACTUAL_SERVICE = True\n")
+            (base / "private-token.json").write_text("synthetic secret must stay out")
+            active = {"source": str(source), "unit": "fixture", "port": 1, "slot": "legacy"}
+            maintenance.save(base / "current.json", active)
+            service = maintenance.Maintenance({"base": str(base)})
+            files = maintenance.inventory(source)
+            baseline = maintenance.sha(maintenance.encoded(files))
+            service.status = lambda: {"active": active, "files": files, "source_sha256": baseline}
+            receipt = service.stage({**self.payload(), "base_sha256": baseline})
+            staged = Path(receipt["source"])
+            self.assertEqual((staged / "ops/maintenance.py").read_bytes(), (base / "maintenance.py").read_bytes())
+            self.assertEqual(receipt["managed_source_snapshots"], {"ops/maintenance.py": maintenance.sha((base / "maintenance.py").read_bytes())})
+            self.assertFalse((staged / "private-token.json").exists())
+            self.assertEqual(service.stage({**self.payload(), "base_sha256": baseline}), receipt)
+            with self.assertRaisesRegex(ValueError, "Only novel"):
+                service.stage({**self.payload(), "base_sha256": baseline, "files": {"ops/maintenance.py": "CALLER = True\n"}})
+
     def test_source_inventory_keeps_reader_assets_and_excludes_runtime(self):
         with tempfile.TemporaryDirectory(prefix=".novel-ops-test-", dir=Path(__file__).resolve().parents[1]) as tmp:
             root = Path(tmp)
