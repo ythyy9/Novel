@@ -1,5 +1,17 @@
 # 首轮命名重做：来源、语感与候选
 
+## 2026-10-16：正式作品旧名历史项的作者确认
+
+作者针对陆桂枝、陆冬青、齐松、邵师傅、灯笼巷、桥东、桥西站的原始命名动机仍为 Unknown、首审将其列入 unresolved 的问题，明确答复：
+
+> 确认旧名历史项不阻断，新命名要求不变
+
+这项确认适用于正式《失址之城》：上述旧名、Unknown 和全部历史记录保留，作为非阻断历史项；今后新增或改名仍须事先有完整依据。它不恢复已经缺失的原始动机，不将未知写成已核实，也不放行其他实质问题。
+
+作者原话及完整提问上下文已保存于小说协作档案 `turn-69a791f3644659a38b16f6ad7518c4b5`（`session-6d2ac61b10c35604ab6244ab959fd509`），原话 SHA-256 为 `1de772a8e470d9233a9a1e39bef2f1db4e0b074a7905bac8d6abbc0d97d0c0d6`。本地原件及回读位于 `.local-validation/packet-capacity-20261016/author-old-names-confirmation.md` 和 `author-old-names-archive-readback.json`。
+
+作者决定已作出，不再等待作者选择；执行状态另行区分：当前固定版本二审仍在运行，现有 `Engine.decision` 必须等待执行任务结束才可追加作者决定并形成新版本。先保留并完成原二审及全部 checkpoint，再由可信操作员导入、基于新输入独立复核，按真实门禁验收。讨论归档和本页记录不是作品 `decisions/` 导入回执；不改写旧首审、旧 unresolved，也不因本次确认提前宣称第二十八章已验收。
+
 ## 2026-10-16：确认与后续全部命名要求
 
 作者已阅读第二版 `b31e137b0fb8be41c0734c4b6cfdcc84512e30533d116b76448d517830fff278/manuscript/001.md` 及本地云端返回的 `002-naming-probe.md`，确认“名字没有问题”，并澄清：
@@ -83,3 +95,17 @@
 - [Glyndebourne：Alcina synopsis](https://www.glyndebourne.com/opera-archive/explore-our-operas/alcina-synopsis/)：Bradamante 的身份伪装与救援行动；配合文学背景作联想，不当作她与 Cogman 角色完全对应的证明。
 - [Kansas City Ballet：Coppelia](https://kcballet.org/repertory/coppelia/)：作品来历与人偶故事。
 - [The Metropolitan Opera：Das Rheingold 节目梗概](https://www.metopera.org/globalassets/user-information/nightly-opera-streams/week-30/playbills/wagner-week-telecast-programs_rheingold.pdf)：Alberich 的盗金、权力与诅咒关联。
+
+## 2026-10-28：第37章验收回读与三项待关注
+
+审核 `99d45c4f2c1843898de2606b229b6265`；accepted 版本 `3c526a62d9ae76afb30c1465116a23568a1f78244485f7984cbb78044f373726`；result SHA-256 `eee677c7e8494916a0b59c45483fe3fff55a541e0e4f278cc2d7bace6d5af5d1`；plan SHA-256 `0c073595288ebe98c86afeacc44b53cfe6d7f8c7cfe490bc892aea1a58cb4b92`。提交 `2026-10-27T18:36:00.703450+00:00`，发布 `2026-10-27T18:36:25.218343+00:00`，验收事件 `2026-10-27T18:37:23.535682+00:00`（均为 UTC）。初始 context_ref `/root/continue_ch37_first_review/independent_reference_successor_review`，最终综合 `/root/continue_ch37_first_review/independent_final_synthesis`。
+
+现行系统门禁已通过，三类待关注仍open/minor；系统门禁通过≠文学认可。原始结果4行中阅读体验另有一条checkpoint前缀副本，原结果未删改。
+
+| finding id | 分类 | 当前证据与处置 |
+| --- | --- | --- |
+| `CH37-REVIEW-READ-0035-001` | experience / minor | 第2–3章连读说明密度，本轮不返修，保留体验意见交作者裁决。 |
+| `CH37-FINAL-NAMING-001` | concern / minor | 第一章《墙后有人》历史命名记录缺项，原始动机Unknown；只在未来38章追加新命名记录，不改旧章标题或假定作者定名。 |
+| `CH37-FINAL-NAMING-002` | concern / minor | 固定包当时缺所引handoff。本轮在既有移交sidecar找到671字符/1751字节副本，sha256 `cfff1ee8c5f8b5ac3647e553ec3cf1e6ded246006985b4fdfbd35c42e8550b0c`，与旧正式任务包同名handoff索引哈希相同；新审核固定包仍未含它。原始创建/写前传递时间Unknown。 |
+
+原生spawn创建时间、turnID仍Unknown；业务context_ref只验证已存声明，不作为完整平台独立性证明。副本路径、索引关系、每条合法路径及代价、≤600字命名补查指令见[第37章后续处置单](../chapter37-followups-2026-10-28.md)。标题和许小满均不单独导入reference/decision，以免仅补资料生成draft新版本并重跑整轮审核；随未来38章写作及审核核查。本轮没有改正文、命名旧记录、作者决定或控制文件。

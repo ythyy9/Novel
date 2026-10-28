@@ -121,6 +121,8 @@ class DotWorkspace:
                     if previous["state"] == "error":
                         raise EngineError(receipt["error"])
                     return {**receipt, "replayed": True}
+                from .dot_fence import guard
+                guard(self, request_id, action, arguments)
                 db.execute("INSERT INTO requests VALUES (?,?,'pending',?,?)",
                            (request_id, signature, canonical(intent) if intent else None, now()))
             try:
@@ -177,7 +179,8 @@ class DotWorkspace:
         recoverable = [row for row in recoverable if row["task_id"] in states]
         tasks = [{**summaries[row["id"]], "context_ref": row["context_ref"],
                   "packet_index": "packet-index.json", "task_document": "task-info.json"} for row in selected]
-        return {"book": self.engine.book(self.book_id), "assessment": self.engine.assessment(self.book_id),
+        from .dot_fence import status as fenced_status
+        return fenced_status(self, {"book": self.engine.book(self.book_id), "assessment": self.engine.assessment(self.book_id),
                 "tasks": tasks, "task_count": len(task_rows), "active_task_count": len(active),
                 "tasks_complete": before is None and len(history) <= history_limit,
                 "next_before": page[-1]["position"] if len(history) > history_limit else None,
@@ -188,7 +191,7 @@ class DotWorkspace:
                 "uncertain_requests": pending, "recoverable_open_requests": recoverable,
                 "model_execution": "external_dot_only",
                 "reference_refresh": "not_performed", "notification_delivery": "not_attested",
-                "context_provenance": "executor_declared_requires_independent_live_verification"}
+                "context_provenance": "executor_declared_requires_independent_live_verification"})
 
     def open_task(self, *, request_id, kind, instruction, expected_revision, context_ref):
         _text(instruction, "instruction", 12000)
@@ -363,6 +366,9 @@ class DotWorkspace:
             content = canonical(self.status(before=int(cursor)))
         elif document == "task-info.json":
             content = canonical(self._summary(task))
+        elif document == "continuation-guide.json" or document.startswith("continuation-evidence/"):
+            from .dot_fence import read as read_continuation
+            content = read_continuation(self, task_id, document)
         elif document == "candidate-amend-guide.json":
             from .candidate import GUIDE
             content = canonical(GUIDE)
@@ -442,6 +448,8 @@ class DotWorkspace:
             if not rows or len(rows) != rows[0]["total"] or [r["part"] for r in rows] != list(range(len(rows))):
                 raise EngineError("Upload is incomplete")
             raw = "".join(row["content"] for row in rows)
+            from .dot_fence import guard
+            guard(self, request_id, "finish", {**args, "content": raw})
             result = _json(raw, "Dot result")
             from .candidate import FORMAT, amend
             if isinstance(result, dict) and result.get("format") == FORMAT:
