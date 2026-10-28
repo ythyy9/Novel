@@ -100,7 +100,7 @@
 
 审核 `99d45c4f2c1843898de2606b229b6265`；accepted 版本 `3c526a62d9ae76afb30c1465116a23568a1f78244485f7984cbb78044f373726`；result SHA-256 `eee677c7e8494916a0b59c45483fe3fff55a541e0e4f278cc2d7bace6d5af5d1`；plan SHA-256 `0c073595288ebe98c86afeacc44b53cfe6d7f8c7cfe490bc892aea1a58cb4b92`。提交 `2026-10-27T18:36:00.703450+00:00`，发布 `2026-10-27T18:36:25.218343+00:00`，验收事件 `2026-10-27T18:37:23.535682+00:00`（均为 UTC）。初始 context_ref `/root/continue_ch37_first_review/independent_reference_successor_review`，最终综合 `/root/continue_ch37_first_review/independent_final_synthesis`。
 
-现行系统门禁已通过，三类待关注仍open/minor；系统门禁通过≠文学认可。原始结果4行中阅读体验另有一条checkpoint前缀副本，原结果未删改。
+现行系统门禁已通过，三类待关注仍open/minor；系统门禁通过≠文学认可。以下处置沿用 TASKBOOK 的执行默认值，不代表作者已经裁决这些问题。原始结果4行中阅读体验另有一条checkpoint前缀副本，原结果未删改。
 
 | finding id | 分类 | 当前证据与处置 |
 | --- | --- | --- |

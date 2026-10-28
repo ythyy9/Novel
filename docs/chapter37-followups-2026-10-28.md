@@ -2,7 +2,7 @@
 
 审核 `99d45c4f2c1843898de2606b229b6265`；accepted 版本 `3c526a62d9ae76afb30c1465116a23568a1f78244485f7984cbb78044f373726`；result SHA-256 `eee677c7e8494916a0b59c45483fe3fff55a541e0e4f278cc2d7bace6d5af5d1`；plan SHA-256 `0c073595288ebe98c86afeacc44b53cfe6d7f8c7cfe490bc892aea1a58cb4b92`。提交 `2026-10-27T18:36:00.703450+00:00`，发布 `2026-10-27T18:36:25.218343+00:00`，验收事件 `2026-10-27T18:37:23.535682+00:00`（均为 UTC）。初始 context_ref `/root/continue_ch37_first_review/independent_reference_successor_review`，最终综合 `/root/continue_ch37_first_review/independent_final_synthesis`。
 
-回读结果 `mismatch=0 unknown=4`；当前accepted、活动任务0。全部原始发现保持open，以下是作者本轮指定的处置路径，不是线上finding状态更改，也不是对旧审或旧章的文学认可。原结果4行含阅读体验的checkpoint前缀副本，实质主题3项，副本身份完整保留于FINAL-RECEIPT。
+回读结果 `mismatch=0 unknown=4`；当前accepted、活动任务0。全部原始发现保持open，以下是 TASKBOOK 的执行默认值，其中“不返修”明确标为推定，不能记成作者已指定或已裁决。它们不是线上finding状态更改，也不是对旧审或旧章的文学认可；长期处置仍待作者决定。原结果4行含阅读体验的checkpoint前缀副本，实质主题3项，副本身份完整保留于FINAL-RECEIPT。
 
 ## 1. 第2–3章说明密度
 
@@ -69,3 +69,44 @@
 与本机BLOCKED.md同步的当前待裁决清单：无工程阻塞；上列三项未来作者选择保留；原生创建时间、turnID、首章标题原始动机、handoff原始创建/写前传递时间Unknown。首次沙箱全量失败保留；宿主原测试331项、skipped1、OK，未改测试或源码。忽略目录内的BLOCKED.md随本机交付，Git只提交本白名单文档中的同步清单。
 
 交付止于单个分支 `codex/ch37-closure-20261028` 的一个PR，不合并。线上任务/checkpoint总数与受保护目录开工快照在最终回执继续核对；系统门禁通过≠文学认可。
+
+## PR #5 独立审查（2026-10-28）
+
+审查对象为 `add70ec80149c465af10c9bdb74ac62875dc831d..fcb631d05891fd4cc8e697f5c9beed82940936a8`，合同为本机 `.local-validation/ch37-closure-followup-20261028/TASKBOOK.md`。按 TASKBOOK 的硬指标、开工快照、实际差异、原始回执及 CI 日志核对，不以旧执行者的完成声明代替证据。
+
+发现并修正 1 项事实归属问题（P2）：本处原称“作者本轮指定”，验收收口文档原称“作者本轮决定”，但 TASKBOOK 的“我替领导拍的板”将相关选择记为默认处置，其中“不返修”标为“猜的”。现改为 TASKBOOK 执行默认值，保留作者未来裁决；不据此更改线上决定或 finding。作者本次明确的“不合并、不启动第38章”继续有效。
+
+原 PR 共 23 个文件、39 个差异块：21 个开工已有文件按要求收录，另有 README 的一行链接和本处置单；所有差异块均能对应收录或白名单追加要求。除允许追加的两份文档和 README 外，开工文件逐字不变；`novel/`、`tests/`、`policies/`、`methods/`、`schemas/` 无开工后的新增、修改或删除。三份 fence 文件的 Git blob、本机文件和既有 release 内容 SHA-256 全同。本次修正仅编辑三份白名单文档的本轮新增内容，未改旧段落、源码、测试或控制文件。
+
+独立执行的命令与结果（路径省略共同前缀 `.local-validation/ch37-closure-followup-20261028/`）：
+
+```text
+python -I negative_receipt_check.py
+NEGATIVE: mismatch=1 unknown=4
+mismatch task.attempts: 1
+RESTORED: mismatch=0 unknown=4
+tasks=148->148 checkpoints=2757->2757
+verifier_restored_byte_for_byte=true
+
+python -I check_scope.py
+protected_added_changed_removed=0 baseline_other_files_changed=0
+
+python -I check_docs.py
+docs/chapter37-evidence-closure-2026-10-27.md: result_hash_found=true original_prefix_unchanged=true
+docs/works/naming.md: result_hash_found=true original_prefix_unchanged=true
+docs_ok
+
+git diff --check
+(无输出，退出码0)
+
+git check-ignore runtime/x.txt
+runtime/x.txt
+```
+
+回执所引用的六份源文件哈希逐一匹配；两次 SSH 归档时间分别为 `2026-10-28T11:56:38.576397+00:00` 和 `2026-10-28T12:06:51.115376+00:00`。全库 tasks `148→148`、checkpoints `2757→2757`、网关 tasks `130→130` 是该收口期间的证据，本次没有新建 SSH 登录来冒充另一轮全库查询。本次通过正式 API 独立全文回读：审核仍 completed、attempt=1/no_progress=0，70/70 批、70 checkpoint、missing=[]，result/plan 哈希与上文相同；当前版本仍 accepted、can_accept=true、blockers=[]、活动任务0、网关任务130。原生创建时间、turnID、首章标题原始动机、handoff 原始创建/写前传递时间这四项 Unknown 保留。
+
+测试复用与最终源码一致的原始日志，没有为文档修正重复运行全量：宿主 `python -m unittest discover -s tests -v` 为 `Ran 331 tests in 363.058s / OK (skipped=1)`。PR CI [run 40685143699](https://github.com/ythyy9/Novel/actions/runs/40685143699) 的 Windows 3.11/3.13 分别为 `Ran 331 tests in 67.647s / OK`、`Ran 331 tests in 53.282s / OK`，均无跳过；Ubuntu 3.11/3.13 分别为 `Ran 331 tests in 29.242s / OK (skipped=5)`、`Ran 331 tests in 47.655s / OK (skipped=5)`。Linux 的五项均由既有 Windows 专用测试装饰器跳过，Windows CI 实际执行了它们。提交前全量的 ≥331、skipped≤1 门槛由宿主和 Windows CI 满足，不能把 Linux 结果也描述成 skipped≤1。
+
+三项处置的 finding 身份、分类、状态及摘录与实际结果一致；handoff 复算 SHA-256 仍为 `cfff1ee8c5f8b5ac3647e553ec3cf1e6ded246006985b4fdfbd35c42e8550b0c`。启动包包含原件全文和当前 writing 方法全文，instruction 4113 字符、命名段 416 字符、未发送消息 251 字符，expected_revision 与回执相同。全部本地 Markdown 链接存在，提交差异不含 runtime/books/.local-validation，凭据关键词新增行只有说明或变量名；临时凭据目录为空，原 runtime 探针已删除。
+
+`BLOCKED.md` 继续作为本机交付附件，其当前待裁决内容已同步在本页；不违反 TASKBOOK 的禁止提交 `.local-validation/` 边界。当前无未修复的范围内审查问题。PR 仍只供审阅，不合并；本次未发 Dot 消息、未创建任务、未改计划、未部署服务，未启动第38章。
