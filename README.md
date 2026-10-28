@@ -79,3 +79,5 @@ python -m unittest discover -s tests -v
 ## 文档来源
 
 2026-10-14 由用户提供项目文本并要求放入 `ythyy9/Novel`，随后授权按架构与路线实施第一版。完整架构文档仅作排版整理；实施路线和本首页是编辑及实现状态说明。原文保留的来源占位不自动变成已核验引用；本轮实际接入依据及证据见 [适配器说明](adapters/README.md) 和 [验收记录](docs/validation.md)。
+
+- 第37章验收收口与三项待关注处置：[2026-10-28记录](docs/chapter37-followups-2026-10-28.md)。

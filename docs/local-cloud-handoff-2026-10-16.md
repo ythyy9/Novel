@@ -64,3 +64,18 @@ SQLite、workflow.json和不可变快照共同指向当前版。runtime/writing�
 ## 接续入口与边界
 
 本次保留准确d71控制器在 `.local-validation/local-cloud-20261016/controller/`；运行现有CLI时从该目录执行，并显式 `--root ../acceptance-data`，正文、版本和回执则使用Drive中固定文件ID/清单以及两端独立目录。主工作区现有两项未推送提交及未提交参考书功能仍保持原状，尚未合并两条Git历史，不能说正式工作区源码已整体同步。该限制不混同已完成的真实测试副本闭环。
+
+
+## 交接完成后的CI诊断补充
+
+文档提交b870的push四组通过，但PR run38890400028的Windows3.13.16/job116938210039曾在原并发收件/认领测试中以Path escapes project误判代替active/stopped；Windows3.11该job整体cancelled、test step成功，原日志完整留在本地latest-ci-failed-job.log，不以其他成功覆盖。
+
+云端随后独立提交5441d7b6793ac87e7509aa8c8f403e28985197b3，只增强失败时实际比较路径信息、补充原有drive/UNC/大小写和真正逃逸回归及Windows50轮原场景；没有改变路径拒绝判定、链接保护或原断言，未采用尚无证据的nearest-ancestor方案。后续进度提交3e3fcdb332c843491f5fc1287898f99f6c10224c的push38891246266、PR38891252966共8个实际job均attempt1 success，父端逐项回读。详见[Git中的最新云端进度](https://github.com/ythyy9/Novel/blob/codex/v1-local-workflow/docs/cloud-progress.md)。
+
+本机旧b870在真实Windows3.11.9与3.13.16各200轮原并发场景均通过；3.13.16使用本次独立目录的[官方便携包](https://www.python.org/downloads/release/python-31316/)，按官网SHA校验，未全局安装或改PATH。新诊断代码在真实Windows3.13.16的全部7项路径回归（含50轮原场景）通过，47.445秒。日志与CI逐项结果在本地windows313-diagnostic-targeted.log、windows-concurrency-reproduction.json、windows313-concurrency-reproduction.json、ci-final-readback.json。
+
+以上均未复现原误判，根因仍未定位，不能称为修复。本轮有界诊断已经结束；不创建监控或无限追加压力。原d71控制器及已完成的真实交接数据、正文和回执完全保持不变。文学与命名效果继续等待作者阅读反馈。
+
+## 作者随后确认命名并明确后续要求
+
+2026-10-16：作者阅读上述第二版与 275 字试读后确认“名字没有问题”，并要求今后所有名字都有依据、解释选用理由和寓意。本机正式资料库已追加原话反馈 `400487bbc5ce41c3ac2523aec41f2b62`，当前正文版本和两份阅读文件哈希均未变。已据此次直接要求更新本机 AGENTS、写作与审核方法及[命名记录](works/naming.md)；这项明确要求与此前候选方法自动推广的边界分开。新方法将进入之后在本机新建任务的控制文档，历史任务及云端独立副本保持原样；本轮没有推送、上传或向云端聊天发消息，不声称云端已接收新规则。命名确认不扩写为整章、试读文学质量或新名字选择能力已经通过。
